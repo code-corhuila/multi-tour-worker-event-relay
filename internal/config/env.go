@@ -49,8 +49,10 @@ func LoadRelay(getenv func(string) string) (Relay, error) {
 func baseURL(getenv func(string) string, name string) (string, error) {
 	raw := strings.TrimRight(getenv(name), "/")
 	u, err := url.Parse(raw)
-	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
-		return "", fmt.Errorf("%s must be an absolute http(s) url", name)
+	// Only scheme://host[:port]: credentials, a query, a fragment or a path would reach every request.
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" ||
+		u.User != nil || u.RawQuery != "" || u.Fragment != "" || u.Path != "" {
+		return "", fmt.Errorf("%s must be an http(s) url with only scheme, host and port", name)
 	}
 	return raw, nil
 }

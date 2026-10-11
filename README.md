@@ -28,14 +28,16 @@ Variables (all read at start; a missing or malformed one stops the worker):
 | Variable | Default | Meaning |
 |---|---|---|
 | `SERVICE_TOKEN` | none, required | Service credential, sent as `Authorization: Bearer` |
-| `SECURITY_BASE_URL` | none, required | Internal base URL of `multi-tour-security` (publisher and recipient) |
-| `IDENTITY_AUDIT_BASE_URL` | none, required | Internal base URL of `multi-tour-identity-audit-api` (publisher) |
+| `SECURITY_BASE_URL` | none, required (e.g. `http://security:8086`; compose also requires it) | Internal base URL of `multi-tour-security` (publisher and recipient) |
+| `IDENTITY_AUDIT_BASE_URL` | none, required (e.g. `http://identity-audit-api:8082`; compose also requires it) | Internal base URL of `multi-tour-identity-audit-api` (publisher) |
 | `RELAY_INTERVAL` | `5s` | Time between two runs |
 | `BATCH_SIZE` | `100` | Events handled at most per run |
 | `RUN_TIMEOUT` | `30s` | Time limit of one run |
 | `HTTP_TIMEOUT` | `5s` | Time limit of each HTTP attempt |
 | `HTTP_ATTEMPTS` | `3` | Attempts per call (network, `429` and `5xx` only) |
-| `HEALTH_ADDR` | `:8080` | Where `GET /health` listens |
+| `HEALTH_ADDR` | `:8080` | Where `GET /health` listens (compose passes it through; the healthcheck and `expose` assume 8080) |
+
+`GET /health` only says the process is up: it does not reflect the runner or the last run. A base URL holds only scheme, host and port (no credentials, path, query or fragment).
 
 The routing table (which event type goes to which service) lives in `internal/config/routing.go`.
 

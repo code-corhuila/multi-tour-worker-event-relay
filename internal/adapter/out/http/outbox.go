@@ -65,7 +65,8 @@ func (o *Outbox) ListPending(ctx context.Context, page, limit int) ([]out.Event,
 
 // MarkPublished tells the owning API that every consumer accepted the event.
 func (o *Outbox) MarkPublished(ctx context.Context, eventID string) error {
-	req := httpclient.Request{Method: http.MethodPost, Path: o.eventPath(eventID, "published")}
+	req := httpclient.Request{Method: http.MethodPost, Path: o.eventPath(eventID, "published"),
+		IdempotencyKey: eventID + ":published"} // a repeat answers 200, so the runtime may retry it
 	if err := o.client.Do(ctx, req, nil); err != nil {
 		return fmt.Errorf("mark event published: %w", err)
 	}

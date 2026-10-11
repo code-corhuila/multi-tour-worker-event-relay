@@ -8,14 +8,15 @@ services:
     environment:
       # Issued by the identity service for this worker; never versioned.
       SERVICE_TOKEN: ${SERVICE_TOKEN:?SERVICE_TOKEN is required, set it in env/<environment>.env}
-      SECURITY_BASE_URL: ${SECURITY_BASE_URL:-http://security:8080}
-      IDENTITY_AUDIT_BASE_URL: ${IDENTITY_AUDIT_BASE_URL:-http://identity-audit-api:8080}
+      # No default: a wrong guess of a service name or port must fail visibly.
+      SECURITY_BASE_URL: ${SECURITY_BASE_URL:?SECURITY_BASE_URL is required, e.g. http://security:8086}
+      IDENTITY_AUDIT_BASE_URL: ${IDENTITY_AUDIT_BASE_URL:?IDENTITY_AUDIT_BASE_URL is required, e.g. http://identity-audit-api:8082}
       RELAY_INTERVAL: ${RELAY_INTERVAL:-5s}
       BATCH_SIZE: ${BATCH_SIZE:-100}
       RUN_TIMEOUT: ${RUN_TIMEOUT:-30s}
       HTTP_TIMEOUT: ${HTTP_TIMEOUT:-5s}
       HTTP_ATTEMPTS: ${HTTP_ATTEMPTS:-3}
-      HEALTH_ADDR: ":8080"
+      HEALTH_ADDR: ${HEALTH_ADDR:-:8080}
     expose: ["8080"]
     healthcheck:
       test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/health"]
