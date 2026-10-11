@@ -27,3 +27,13 @@ jobs:
         run: go vet ./...
       - name: go test
         run: go test ./...
+      # The compose file must be valid; the token is a placeholder, nothing starts
+      - name: compose config
+        run: docker compose -f deploy/compose.yml config -q
+        env:
+          SERVICE_TOKEN: ci-placeholder
+          SECURITY_BASE_URL: http://security:8086
+          IDENTITY_AUDIT_BASE_URL: http://identity-audit-api:8082
+      # Catches a base image tag that does not exist; nothing is pushed
+      - name: docker build
+        run: docker build -f deploy/Dockerfile .
