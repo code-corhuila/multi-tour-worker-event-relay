@@ -8,7 +8,7 @@ import (
 
 const tenantEventsPath = "/api/v1/security/internal/tenants/{tenantId}/events"
 
-// knownEventTypes are the types the publishers write to their outbox in this cut.
+// knownEventTypes are the types the publishers write to their outbox in this cut. AccountBlocked is\n// written by the outbox of multi-tour-security; it is a proposed name that is not in 06-data yet.
 var knownEventTypes = map[string]bool{
 	"TenantCreated":          true,
 	"TenantInactivated":      true,
@@ -37,8 +37,11 @@ func NewRoutingTable(routes map[string][]out.Route) (*RoutingTable, error) {
 	return &RoutingTable{routes: routes}, nil
 }
 
-// DefaultRoutes is the table of this cut. Only security exposes a receiving route today; the
-// account events have no consumer until identity-audit publishes its audit route.
+// DefaultRoutes is the table of this cut. Only security exposes a receiving route today.
+// AccountSessionsRevoked and AccountBlocked have no consumer yet and are marked published without
+// delivery on purpose, so they do not pile up in the outbox.
+// shortcut: spec AC-01.2 (these events reach every service) is not met until a consumer exists,
+// upgrade when identity-audit or another service publishes its receiving route.
 func DefaultRoutes() map[string][]out.Route {
 	security := []out.Route{{Consumer: "security", Path: tenantEventsPath}}
 	return map[string][]out.Route{

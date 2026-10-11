@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"net/url"
+	"regexp"
 	"strings"
 	"unicode"
 
@@ -19,6 +19,9 @@ const (
 	maxErrorRunes     = 500
 	tenantPlaceholder = "{tenantId}"
 )
+
+// uuidPattern is strict on purpose: ids come from the publisher and become path segments and a header.
+var uuidPattern = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
 
 // Publisher is a named outbox to read from.
 type Publisher struct {
@@ -67,7 +70,7 @@ func (r *RelayEvents) drain(ctx context.Context, publisher Publisher, budget int
 	for budget > 0 && ctx.Err() == nil {
 		events, err := publisher.Source.ListPending(ctx, 1, min(budget, pageLimit))
 		if err != nil {
-			log.WarnContext(ctx, "reading the outbox failed, left for the next run", "error", sanitize(err))
+			log.WarnContext(ctx, "reading the outbox failed, left for the next run")
 			return processed, failed + 1
 		}
 		fresh := events[:0:0]
@@ -89,46 +92,61 @@ func (r *RelayEvents) drain(ctx context.Context, publisher Publisher, budget int
 	return processed, failed
 }
 
-// relay delivers one event to all its routes; a failure is recorded in the source and returned.
+// relay delivers one event to all its routes. A failure is recorded in the source and returned as
+// an error whose text is the sanitized message, because the runtime logs what the handler returns.
+// If MarkPublished fails no attempt is recorded, on purpose: the event is still pending, is
+// redelivered next run with the same Idempotency-Key and consumers apply it once. The cost is that
+// such a run does not move the event toward the 20 attempts, so a source that can never mark an
+// event shows only in the failed count and the log.
 func (r *RelayEvents) relay(ctx context.Context, source out.EventSource, e out.Event) error {
+	if !uuidPattern.MatchString(e.ID) {
+		// The id is a path segment of the source: an invalid one cannot even be recorded against.
+		return errors.New("event has an invalid id")
+	}
 	routes, known := r.router.RoutesFor(e.Type)
 	if !known {
-		return r.fail(ctx, source, e, fmt.Errorf("unknown event type %q", e.Type))
+		return r.fail(ctx, source, e, fmt.Sprintf("unknown event type %q", clean(e.Type)))
 	}
-	var errs []error
+	var failures []string
 	for _, route := range routes {
-		if err := r.deliver(ctx, route, e); err != nil {
-			errs = append(errs, fmt.Errorf("%s: %w", route.Consumer, err))
+		if reason := r.deliver(ctx, route, e); reason != "" {
+			failures = append(failures, route.Consumer+": "+reason)
 		}
 	}
-	if len(errs) > 0 {
-		return r.fail(ctx, source, e, errors.Join(errs...))
+	if len(failures) > 0 {
+		return r.fail(ctx, source, e, strings.Join(failures, "; "))
 	}
 	return source.MarkPublished(ctx, e.ID)
 }
 
-func (r *RelayEvents) deliver(ctx context.Context, route out.Route, e out.Event) error {
+// deliver returns "" on success or a fixed reason: the raw error of a sink can hold hosts or
+// credentials, so it never reaches the source or the log.
+func (r *RelayEvents) deliver(ctx context.Context, route out.Route, e out.Event) string {
 	path := route.Path
 	if strings.Contains(path, tenantPlaceholder) {
-		if e.TenantID == "" {
-			return errors.New("event has no tenantId for the route")
+		if !uuidPattern.MatchString(e.TenantID) {
+			return "event has an invalid tenantId"
 		}
-		path = strings.ReplaceAll(path, tenantPlaceholder, url.PathEscape(e.TenantID))
+		path = strings.ReplaceAll(path, tenantPlaceholder, e.TenantID)
 	}
-	return r.sink.Deliver(ctx, out.Delivery{Consumer: route.Consumer, Path: path, IdempotencyKey: e.ID, Event: e})
+	if err := r.sink.Deliver(ctx, out.Delivery{Consumer: route.Consumer, Path: path, IdempotencyKey: e.ID, Event: e}); err != nil {
+		return "delivery failed"
+	}
+	return ""
 }
 
-// fail records the attempt and returns the cause so the runtime counts the event as failed.
-func (r *RelayEvents) fail(ctx context.Context, source out.EventSource, e out.Event, cause error) error {
-	if err := source.RecordFailedAttempt(ctx, e.ID, sanitize(cause)); err != nil {
-		return errors.Join(cause, fmt.Errorf("recording the attempt: %w", err))
+// fail records the attempt and returns the same sanitized message as the error.
+func (r *RelayEvents) fail(ctx context.Context, source out.EventSource, e out.Event, message string) error {
+	message = clean(message)
+	if err := source.RecordFailedAttempt(ctx, e.ID, message); err != nil {
+		return errors.New(message + "; recording the attempt failed")
 	}
-	return cause
+	return errors.New(message)
 }
 
-// sanitize makes the error one printable line of bounded length, as the attempts route requires.
-func sanitize(err error) string {
-	line := strings.Join(strings.FieldsFunc(err.Error(), func(c rune) bool { return unicode.IsControl(c) || unicode.IsSpace(c) }), " ")
+// clean makes text one printable line of bounded length, as the attempts route requires.
+func clean(text string) string {
+	line := strings.Join(strings.FieldsFunc(text, func(c rune) bool { return unicode.IsControl(c) || unicode.IsSpace(c) }), " ")
 	if runes := []rune(line); len(runes) > maxErrorRunes {
 		line = string(runes[:maxErrorRunes])
 	}
