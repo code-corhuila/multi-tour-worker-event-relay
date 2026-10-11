@@ -8,7 +8,8 @@ import (
 
 const tenantEventsPath = "/api/v1/security/internal/tenants/{tenantId}/events"
 
-// knownEventTypes are the types the publishers write to their outbox in this cut. AccountBlocked is\n// written by the outbox of multi-tour-security; it is a proposed name that is not in 06-data yet.
+// knownEventTypes are the types the publishers write to their outbox in this cut. AccountBlocked is
+// written by the outbox of multi-tour-security; it is a proposed name that is not in 06-data yet.
 var knownEventTypes = map[string]bool{
 	"TenantCreated":          true,
 	"TenantInactivated":      true,
