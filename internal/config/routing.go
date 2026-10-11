@@ -1,23 +1,58 @@
 package config
 
-import "github.com/code-corhuila/multi-tour-worker-event-relay/internal/application/port/out"
+import (
+	"fmt"
+
+	"github.com/code-corhuila/multi-tour-worker-event-relay/internal/application/port/out"
+)
+
+const tenantEventsPath = "/api/v1/security/internal/tenants/{tenantId}/events"
+
+// knownEventTypes are the types the publishers write to their outbox in this cut.
+var knownEventTypes = map[string]bool{
+	"TenantCreated":          true,
+	"TenantInactivated":      true,
+	"TenantReactivated":      true,
+	"AccountSessionsRevoked": true,
+	"AccountBlocked":         true,
+}
 
 // RoutingTable maps each event type to the routes that receive it.
 type RoutingTable struct {
 	routes map[string][]out.Route
 }
 
-// NewRoutingTable checks the table at start.
+// NewRoutingTable checks the table at start: an unknown event type or an incomplete route stops the worker.
 func NewRoutingTable(routes map[string][]out.Route) (*RoutingTable, error) {
-	return &RoutingTable{}, nil
+	for eventType, list := range routes {
+		if !knownEventTypes[eventType] {
+			return nil, fmt.Errorf("routing table: unknown event type %q", eventType)
+		}
+		for _, route := range list {
+			if route.Consumer == "" || route.Path == "" {
+				return nil, fmt.Errorf("routing table: event type %q has a route without consumer or path", eventType)
+			}
+		}
+	}
+	return &RoutingTable{routes: routes}, nil
 }
 
-// DefaultRoutes is the table of this cut.
+// DefaultRoutes is the table of this cut. Only security exposes a receiving route today; the
+// account events have no consumer until identity-audit publishes its audit route.
 func DefaultRoutes() map[string][]out.Route {
-	return nil
+	security := []out.Route{{Consumer: "security", Path: tenantEventsPath}}
+	return map[string][]out.Route{
+		"TenantCreated":          security,
+		"TenantInactivated":      security,
+		"TenantReactivated":      security,
+		"AccountSessionsRevoked": nil,
+		"AccountBlocked":         nil,
+	}
 }
 
-// RoutesFor returns the routes of an event type and whether the type is known.
+// RoutesFor returns the routes of an event type and whether the type is in the table.
+// A known type with no routes is delivered to nobody and counts as published.
 func (t *RoutingTable) RoutesFor(eventType string) ([]out.Route, bool) {
-	return nil, false
+	routes, known := t.routes[eventType]
+	return routes, known
 }
