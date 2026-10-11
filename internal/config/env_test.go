@@ -55,6 +55,10 @@ func TestLoadRelay_refuses_to_start_on_a_bad_value(t *testing.T) {
 		"missing token":              {"SECURITY_BASE_URL", "http://a:1", "IDENTITY_AUDIT_BASE_URL", "http://b:1"},
 		"bad interval":               append(append([]string{}, required...), "RELAY_INTERVAL", "soon"),
 		"zero interval":              append(append([]string{}, required...), "RELAY_INTERVAL", "0s"),
+		"url with credentials":       append(append([]string{}, required...), "SECURITY_BASE_URL", "http://user:pw-9x@security:8086"),
+		"url with a query":           append(append([]string{}, required...), "SECURITY_BASE_URL", "http://security:8086?token=pw-9x"),
+		"url with a fragment":        append(append([]string{}, required...), "SECURITY_BASE_URL", "http://security:8086#pw-9x"),
+		"url with a path":            append(append([]string{}, required...), "SECURITY_BASE_URL", "http://security:8086/pw-9x"),
 	}
 	for name, pairs := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -63,7 +67,7 @@ func TestLoadRelay_refuses_to_start_on_a_bad_value(t *testing.T) {
 			if err == nil || err.Error() == "not built" {
 				t.Fatalf("want a validation error, got %v", err)
 			}
-			if strings.Contains(err.Error(), "SERVICE_TOKEN=") {
+			if strings.Contains(err.Error(), "SERVICE_TOKEN=") || strings.Contains(err.Error(), "pw-9x") {
 				t.Errorf("error leaks a value: %v", err)
 			}
 		})

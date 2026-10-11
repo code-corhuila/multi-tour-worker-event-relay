@@ -99,6 +99,10 @@ func TestOutbox_marks_an_event_published(t *testing.T) {
 	if seen.header.Get("Authorization") != "Bearer "+token {
 		t.Errorf("Authorization = %q", seen.header.Get("Authorization"))
 	}
+	// a repeat answers 200 on the owning API, so the runtime may retry the call
+	if seen.header.Get("Idempotency-Key") != eventID+":published" {
+		t.Errorf("Idempotency-Key = %q", seen.header.Get("Idempotency-Key"))
+	}
 }
 
 func TestOutbox_records_a_failed_attempt_with_the_error_text(t *testing.T) {
