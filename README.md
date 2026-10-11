@@ -11,7 +11,35 @@ Worker job 7 (ADR-004 D3, D10): it reads the outbox of each publishing domain th
 
 ## How to start it
 
-Not runnable yet. Copy `.env.example` to `.env`, set `SERVICE_TOKEN` (issued by the identity service) and, once the relay exists, build it from `cmd/worker` (Go 1.26).
+Copy `.env.example` to `.env` and set `SERVICE_TOKEN` (issued by the identity service, never versioned). Then either run it with Go 1.26, exporting the variables of `.env` first:
+
+```
+go run ./cmd/worker
+```
+
+or build the image and start the service from the root composition, which includes `deploy/compose.yml` (the service is `worker-event-relay`; it publishes no port, only `expose 8080` for `/health`):
+
+```
+docker compose -f deploy/compose.yml up --build
+```
+
+Variables (all read at start; a missing or malformed one stops the worker):
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `SERVICE_TOKEN` | none, required | Service credential, sent as `Authorization: Bearer` |
+| `SECURITY_BASE_URL` | none, required (e.g. `http://security:8086`; compose also requires it) | Internal base URL of `multi-tour-security` (publisher and recipient) |
+| `IDENTITY_AUDIT_BASE_URL` | none, required (e.g. `http://identity-audit-api:8082`; compose also requires it) | Internal base URL of `multi-tour-identity-audit-api` (publisher) |
+| `RELAY_INTERVAL` | `5s` | Time between two runs |
+| `BATCH_SIZE` | `100` | Events handled at most per run |
+| `RUN_TIMEOUT` | `30s` | Time limit of one run |
+| `HTTP_TIMEOUT` | `5s` | Time limit of each HTTP attempt |
+| `HTTP_ATTEMPTS` | `3` | Attempts per call (network, `429` and `5xx` only) |
+| `HEALTH_ADDR` | `:8080` | Where `GET /health` listens (compose passes it through; the healthcheck and `expose` assume 8080) |
+
+`GET /health` only says the process is up: it does not reflect the runner or the last run. A base URL holds only scheme, host and port (no credentials, path, query or fragment).
+
+The routing table (which event type goes to which service) lives in `internal/config/routing.go`.
 
 ## Where the data is
 
@@ -23,7 +51,7 @@ Nowhere: it keeps no database and no state. Each event stays in the outbox of it
 
 ## What is missing
 
-The relay logic is not built yet: today the packages only hold `doc.go`. The module does not yet require `multi-tour-worker-runtime` (not merged or tagged); T-02 onwards need it. Still to come: the tests, the routing table and use case, and the image and compose file.
+`multi-tour-worker-runtime` is pinned to a commit of its `develop` (pseudo-version in `go.mod`) until it is tagged. `AccountSessionsRevoked` and `AccountBlocked` have no consumer yet, so they are marked published without delivery. The Docker image is built by hand or by the root composition; `ci.yml` only validates the compose file.
 
 ## Branching
 
