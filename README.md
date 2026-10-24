@@ -9,9 +9,19 @@ Governance and documentation live in [`multi-tour-docs`](https://github.com/code
 
 Worker job 7 (ADR-004 D3, D10): it reads the outbox of each publishing domain through its internal API and delivers every event to the consumers listed in its routing table. It holds no business rule and exposes only `/health`.
 
+## The service token
+
+The relay calls the internal routes of every service with `Authorization: Bearer $SERVICE_TOKEN`, a token of role `SERVICE` that `multi-tour-security` issues for it:
+
+```
+security issue-service-token worker-event-relay 720h
+```
+
+(`sub` is `worker-event-relay`; the duration goes from one minute to 30 days.) In `develop`, `multi-tour-infra-postgres/scripts/dev-token.sh worker-event-relay` runs that same command. In `qa` and `main` the value is a secret of the environment, set in `env/qa.env` or `env/main.env`: never in a compose file, an image or the repository, and renewed before it expires (the relay answers `401` to every call once it has).
+
 ## How to start it
 
-Copy `.env.example` to `.env` and set `SERVICE_TOKEN` (issued by the identity service, never versioned). Then either run it with Go 1.26, exporting the variables of `.env` first:
+Copy `.env.example` to `.env` and set `SERVICE_TOKEN`. Then either run it with Go 1.26, exporting the variables of `.env` first:
 
 ```
 go run ./cmd/worker
