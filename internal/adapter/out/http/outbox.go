@@ -74,13 +74,13 @@ func (o *Outbox) MarkPublished(ctx context.Context, eventID string) error {
 }
 
 // RecordFailedAttempt gives the owning API a sanitized error; it moves the retry time itself.
-func (o *Outbox) RecordFailedAttempt(ctx context.Context, eventID, message string) error {
+func (o *Outbox) RecordFailedAttempt(ctx context.Context, eventID, message string) (bool, error) {
 	req := httpclient.Request{Method: http.MethodPost, Path: o.eventPath(eventID, "attempts"),
 		Body: map[string]string{"error": message}}
 	if err := o.client.Do(ctx, req, nil); err != nil {
-		return fmt.Errorf("record failed attempt: %w", err)
+		return false, fmt.Errorf("record failed attempt: %w", err)
 	}
-	return nil
+	return false, nil
 }
 
 func (o *Outbox) eventPath(eventID, action string) string {

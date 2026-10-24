@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"regexp"
 	"strings"
+	"time"
 	"unicode"
 
 	workerruntime "github.com/code-corhuila/multi-tour-worker-runtime"
@@ -48,6 +49,9 @@ var _ workerruntime.Job = (*RelayEvents)(nil)
 func NewRelayEvents(publishers []Publisher, router Router, sink out.EventSink, log *slog.Logger) *RelayEvents {
 	return &RelayEvents{publishers: publishers, router: router, sink: sink, log: log}
 }
+
+// WithClock sets the clock the age of a pending event is measured with.
+func (r *RelayEvents) WithClock(now func() time.Time) *RelayEvents { return r }
 
 // Name identifies the job in the runtime.
 func (r *RelayEvents) Name() string { return "event-relay" }
@@ -138,7 +142,7 @@ func (r *RelayEvents) deliver(ctx context.Context, route out.Route, e out.Event)
 // fail records the attempt and returns the same sanitized message as the error.
 func (r *RelayEvents) fail(ctx context.Context, source out.EventSource, e out.Event, message string) error {
 	message = clean(message)
-	if err := source.RecordFailedAttempt(ctx, e.ID, message); err != nil {
+	if _, err := source.RecordFailedAttempt(ctx, e.ID, message); err != nil {
 		return errors.New(message + "; recording the attempt failed")
 	}
 	return errors.New(message)

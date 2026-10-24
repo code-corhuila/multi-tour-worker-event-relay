@@ -40,8 +40,9 @@ type EventSource interface {
 	// MarkPublished is called only after every consumer accepted the event.
 	MarkPublished(ctx context.Context, eventID string) error
 	// RecordFailedAttempt keeps a sanitized error; the owning API moves the retry time
-	// and marks the event failed at the 20th attempt.
-	RecordFailedAttempt(ctx context.Context, eventID, message string) error
+	// and marks the event failed at the 20th attempt. ended says the owner answered that the
+	// event is now FAILED.
+	RecordFailedAttempt(ctx context.Context, eventID, message string) (ended bool, err error)
 }
 
 // EventSink delivers an event to a recipient's internal route. A nil error means 201 or 200.

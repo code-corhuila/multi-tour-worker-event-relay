@@ -108,9 +108,9 @@ func TestOutbox_marks_an_event_published(t *testing.T) {
 func TestOutbox_records_a_failed_attempt_with_the_error_text(t *testing.T) {
 	srv, seen := fakeAPI(t, 200, `{"eventId":"`+eventID+`","status":"PENDING"}`)
 
-	err := relayhttp.NewOutbox(newClient(srv.URL), outboxPath).RecordFailedAttempt(ctx(), eventID, "security: delivery failed")
+	ended, err := relayhttp.NewOutbox(newClient(srv.URL), outboxPath).RecordFailedAttempt(ctx(), eventID, "security: delivery failed")
 
-	if err != nil {
+	if err != nil || ended {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if seen.method != "POST" || seen.path != outboxPath+"/"+eventID+"/attempts" {
@@ -118,6 +118,18 @@ func TestOutbox_records_a_failed_attempt_with_the_error_text(t *testing.T) {
 	}
 	if string(seen.body) != `{"error":"security: delivery failed"}` {
 		t.Errorf("body = %s", seen.body)
+	}
+}
+
+func TestOutbox_says_when_the_owner_answers_that_the_event_failed(t *testing.T) {
+	for status, want := range map[string]bool{"FAILED": true, "PENDING": false} {
+		srv, _ := fakeAPI(t, 200, `{"eventId":"`+eventID+`","status":"`+status+`"}`)
+
+		ended, err := relayhttp.NewOutbox(newClient(srv.URL), outboxPath).RecordFailedAttempt(ctx(), eventID, "x")
+
+		if err != nil || ended != want {
+			t.Errorf("status %s: ended = %v, err = %v, want %v", status, ended, err, want)
+		}
 	}
 }
 
@@ -169,10 +181,11 @@ func TestAdapters_a_5xx_is_a_typed_failure_without_the_raw_body_or_the_token(t *
 	sink := relayhttp.NewSink(map[string]*httpclient.Client{"security": client})
 	outbox := relayhttp.NewOutbox(client, outboxPath)
 	_, listErr := outbox.ListPending(ctx(), 1, 10)
+	_, attemptErr := outbox.RecordFailedAttempt(ctx(), eventID, "x")
 	cases := map[string]error{
 		"list":    listErr,
 		"mark":    outbox.MarkPublished(ctx(), eventID),
-		"attempt": outbox.RecordFailedAttempt(ctx(), eventID, "x"),
+		"attempt": attemptErr,
 		"deliver": sink.Deliver(ctx(), out.Delivery{Consumer: "security", Path: "/x", IdempotencyKey: eventID}),
 	}
 	for name, err := range cases {
