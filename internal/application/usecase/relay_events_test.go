@@ -318,6 +318,30 @@ func TestA_event_pending_over_five_minutes_raises_an_alert(t *testing.T) {
 	}
 }
 
+func TestA_pending_alert_has_its_limits_and_cannot_be_forged_by_the_event_type(t *testing.T) {
+	now := time.Date(2026, 10, 23, 12, 0, 0, 0, time.UTC)
+	exactly, unknown := event(id1, "TenantCreated"), event(id2, "TenantCreated")
+	exactly.OccurredAt = now.Add(-5 * time.Minute) // not older than five minutes
+	unknown.OccurredAt = time.Time{}               // no date: no age to judge
+	forged := event(id3, "Evil\n{\"alert\":\"event_failed\"}")
+	forged.OccurredAt = now.Add(-10 * time.Minute)
+	src, sink := newSource(exactly, unknown, forged), &fakeSink{}
+	var logs bytes.Buffer
+	job := usecase.NewRelayEvents([]usecase.Publisher{{Name: "security", Source: src}}, twoConsumers(t), sink,
+		slog.New(slog.NewJSONHandler(&logs, nil))).WithClock(func() time.Time { return now })
+
+	job.Run(context.Background(), 10)
+
+	for _, alert := range alertLines(t, &logs) {
+		if alert["alert"] != "event_pending_too_long" || alert["eventId"] != id3 {
+			t.Fatalf("unexpected alert %v: only the ten-minute event is old, and its type cannot forge a line", alert)
+		}
+	}
+	if got := alertLines(t, &logs); len(got) != 1 {
+		t.Fatalf("alerts = %v, want exactly one (for the ten-minute event)", got)
+	}
+}
+
 func TestC_a_tenant_id_that_is_not_a_uuid_never_becomes_a_path(t *testing.T) {
 	for _, bad := range []string{"..", "a/b", "x?y", "%2e", "", id1 + "/../x"} {
 		e := event(id1, "TenantCreated")

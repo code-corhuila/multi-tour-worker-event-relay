@@ -18,6 +18,7 @@ import (
 const (
 	pageLimit         = 100
 	maxErrorRunes     = 500
+	stuckAfter        = 5 * time.Minute // a pending event older than this raises an alert (ADR-004 D8)
 	tenantPlaceholder = "{tenantId}"
 )
 
@@ -41,17 +42,21 @@ type RelayEvents struct {
 	router     Router
 	sink       out.EventSink
 	log        *slog.Logger
+	now        func() time.Time
 }
 
 var _ workerruntime.Job = (*RelayEvents)(nil)
 
 // NewRelayEvents wires the job.
 func NewRelayEvents(publishers []Publisher, router Router, sink out.EventSink, log *slog.Logger) *RelayEvents {
-	return &RelayEvents{publishers: publishers, router: router, sink: sink, log: log}
+	return &RelayEvents{publishers: publishers, router: router, sink: sink, log: log, now: time.Now}
 }
 
 // WithClock sets the clock the age of a pending event is measured with.
-func (r *RelayEvents) WithClock(now func() time.Time) *RelayEvents { return r }
+func (r *RelayEvents) WithClock(now func() time.Time) *RelayEvents {
+	r.now = now
+	return r
+}
 
 // Name identifies the job in the runtime.
 func (r *RelayEvents) Name() string { return "event-relay" }
@@ -82,13 +87,17 @@ func (r *RelayEvents) drain(ctx context.Context, publisher Publisher, budget int
 			if !seen[e.ID] {
 				seen[e.ID] = true
 				fresh = append(fresh, e)
+				if age := r.now().Sub(e.OccurredAt); !e.OccurredAt.IsZero() && age > stuckAfter {
+					log.WarnContext(ctx, "pending event older than five minutes", "alert", "event_pending_too_long",
+						"eventId", e.ID, "eventType", clean(e.Type), "age", age.Round(time.Second).String())
+				}
 			}
 		}
 		if len(fresh) == 0 {
 			return processed, failed
 		}
 		p, f := workerruntime.Each(ctx, log, fresh, func(ctx context.Context, e out.Event) error {
-			return r.relay(ctx, publisher.Source, e)
+			return r.relay(ctx, publisher, e)
 		})
 		processed, failed = processed+p, failed+f
 		budget -= len(fresh)
@@ -102,14 +111,15 @@ func (r *RelayEvents) drain(ctx context.Context, publisher Publisher, budget int
 // redelivered next run with the same Idempotency-Key and consumers apply it once. The cost is that
 // such a run does not move the event toward the 20 attempts, so a source that can never mark an
 // event shows only in the failed count and the log.
-func (r *RelayEvents) relay(ctx context.Context, source out.EventSource, e out.Event) error {
+func (r *RelayEvents) relay(ctx context.Context, publisher Publisher, e out.Event) error {
+	source := publisher.Source
 	if !uuidPattern.MatchString(e.ID) {
 		// The id is a path segment of the source: an invalid one cannot even be recorded against.
 		return errors.New("event has an invalid id")
 	}
 	routes, known := r.router.RoutesFor(e.Type)
 	if !known {
-		return r.fail(ctx, source, e, fmt.Sprintf("unknown event type %q", clean(e.Type)))
+		return r.fail(ctx, publisher, e, fmt.Sprintf("unknown event type %q", clean(e.Type)))
 	}
 	var failures []string
 	for _, route := range routes {
@@ -118,7 +128,7 @@ func (r *RelayEvents) relay(ctx context.Context, source out.EventSource, e out.E
 		}
 	}
 	if len(failures) > 0 {
-		return r.fail(ctx, source, e, strings.Join(failures, "; "))
+		return r.fail(ctx, publisher, e, strings.Join(failures, "; "))
 	}
 	return source.MarkPublished(ctx, e.ID)
 }
@@ -139,11 +149,17 @@ func (r *RelayEvents) deliver(ctx context.Context, route out.Route, e out.Event)
 	return ""
 }
 
-// fail records the attempt and returns the same sanitized message as the error.
-func (r *RelayEvents) fail(ctx context.Context, source out.EventSource, e out.Event, message string) error {
+// fail records the attempt and returns the same sanitized message as the error. When the owner answers that the
+// event is now FAILED it raises the alert; the payload is never part of the line.
+func (r *RelayEvents) fail(ctx context.Context, publisher Publisher, e out.Event, message string) error {
 	message = clean(message)
-	if _, err := source.RecordFailedAttempt(ctx, e.ID, message); err != nil {
+	ended, err := publisher.Source.RecordFailedAttempt(ctx, e.ID, message)
+	if err != nil {
 		return errors.New(message + "; recording the attempt failed")
+	}
+	if ended {
+		r.log.ErrorContext(ctx, "event failed after its attempts", "alert", "event_failed",
+			"eventId", e.ID, "eventType", clean(e.Type), "publisher", publisher.Name)
 	}
 	return errors.New(message)
 }

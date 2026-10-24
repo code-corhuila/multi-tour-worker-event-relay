@@ -133,6 +133,18 @@ func TestOutbox_says_when_the_owner_answers_that_the_event_failed(t *testing.T) 
 	}
 }
 
+func TestOutbox_an_answer_without_a_usable_body_is_not_a_failure_to_record(t *testing.T) {
+	for name, body := range map[string]string{"empty": "", "not JSON": "<html>ok</html>"} {
+		srv, _ := fakeAPI(t, 200, body)
+
+		ended, err := relayhttp.NewOutbox(newClient(srv.URL), outboxPath).RecordFailedAttempt(ctx(), eventID, "x")
+
+		if err != nil || ended {
+			t.Errorf("%s: ended = %v, err = %v: the owner counted the attempt, so it is recorded and not ended", name, ended, err)
+		}
+	}
+}
+
 func TestSink_delivers_the_envelope_with_the_event_id_as_idempotency_key(t *testing.T) {
 	for _, status := range []int{201, 200} {
 		srv, seen := fakeAPI(t, status, ``)
