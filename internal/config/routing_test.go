@@ -33,7 +33,17 @@ func TestDefaultRoutesAreValidAndSendTenantEventsToSecurity(t *testing.T) {
 			t.Errorf("%s: routes=%v known=%v, want %v", eventType, routes, known, want)
 		}
 	}
-	if _, known := rt.RoutesFor("AccountSessionsRevoked"); !known {
-		t.Error("AccountSessionsRevoked must be a known type, with no consumer yet")
+}
+
+// RN-WRK7-09: a revocation of the sessions of an account reaches identity-audit, which keeps the cutoff.
+func TestC_default_routes_send_session_revocations_to_identity_audit(t *testing.T) {
+	rt, err := config.NewRoutingTable(config.DefaultRoutes())
+	if err != nil {
+		t.Fatalf("default table: %v", err)
+	}
+	routes, known := rt.RoutesFor("AccountSessionsRevoked")
+	want := out.Route{Consumer: "identity-audit", Path: "/api/v1/identity-audit/internal/tenants/{tenantId}/events"}
+	if !known || len(routes) != 1 || routes[0] != want {
+		t.Errorf("AccountSessionsRevoked: routes=%v known=%v, want %v", routes, known, want)
 	}
 }
