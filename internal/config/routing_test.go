@@ -1,6 +1,7 @@
 package config_test
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/code-corhuila/multi-tour-worker-event-relay/internal/application/port/out"
@@ -33,7 +34,32 @@ func TestDefaultRoutesAreValidAndSendTenantEventsToSecurity(t *testing.T) {
 			t.Errorf("%s: routes=%v known=%v, want %v", eventType, routes, known, want)
 		}
 	}
-	if _, known := rt.RoutesFor("AccountSessionsRevoked"); !known {
-		t.Error("AccountSessionsRevoked must be a known type, with no consumer yet")
+}
+
+// The consumers of the table are the ones the worker has a client for: main refuses to start otherwise, so a route
+// added here without its client is found at start and not at the first delivery.
+func TestC_default_routes_name_only_the_consumers_the_worker_serves(t *testing.T) {
+	rt, err := config.NewRoutingTable(config.DefaultRoutes())
+	if err != nil {
+		t.Fatalf("default table: %v", err)
+	}
+	if got, want := fmt.Sprint(rt.Consumers()), "[identity-audit security]"; got != want {
+		t.Errorf("consumers = %s, want %s", got, want)
+	}
+	if routes, known := rt.RoutesFor("AccountBlocked"); !known || len(routes) != 0 {
+		t.Errorf("AccountBlocked: routes=%v known=%v, want known and with no consumer yet", routes, known)
+	}
+}
+
+// RN-WRK7-09: a revocation of the sessions of an account reaches identity-audit, which keeps the cutoff.
+func TestC_default_routes_send_session_revocations_to_identity_audit(t *testing.T) {
+	rt, err := config.NewRoutingTable(config.DefaultRoutes())
+	if err != nil {
+		t.Fatalf("default table: %v", err)
+	}
+	routes, known := rt.RoutesFor("AccountSessionsRevoked")
+	want := out.Route{Consumer: "identity-audit", Path: "/api/v1/identity-audit/internal/tenants/{tenantId}/events"}
+	if !known || len(routes) != 1 || routes[0] != want {
+		t.Errorf("AccountSessionsRevoked: routes=%v known=%v, want %v", routes, known, want)
 	}
 }
