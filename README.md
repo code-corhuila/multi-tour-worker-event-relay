@@ -61,7 +61,7 @@ Nowhere: it keeps no database and no state. Each event stays in the outbox of it
 
 ## What is missing
 
-`multi-tour-worker-runtime` is pinned to a commit of its `develop` (pseudo-version in `go.mod`) until it is tagged. `AccountSessionsRevoked` and `AccountBlocked` have no consumer yet, so they are marked published without delivery. The Docker image is built by hand or by the root composition; `ci.yml` only validates the compose file.
+`multi-tour-worker-runtime` is pinned to a commit of its `develop` (pseudo-version in `go.mod`) until it is tagged. The six security events that the audit records (`AccountSessionsRevoked`, `AccountBlocked`, `SpecialPermissionGranted`, `SpecialPermissionRevoked`, `OptionalRoleEnabled` and `OptionalRoleDisabled`) go to identity-audit, by the path of the tenant or, for an account that belongs to none, by the path without tenant. `AccountTemporaryCredentialIssued` and `AccountEmailVerified` have no consumer yet, so they are marked published without delivery. The Docker image is built by hand or by the root composition; `ci.yml` only validates the compose file.
 
 ## Branching
 
