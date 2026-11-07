@@ -138,10 +138,15 @@ func (r *RelayEvents) relay(ctx context.Context, publisher Publisher, e out.Even
 func (r *RelayEvents) deliver(ctx context.Context, route out.Route, e out.Event) string {
 	path := route.Path
 	if strings.Contains(path, tenantPlaceholder) {
-		if !uuidPattern.MatchString(e.TenantID) {
+		switch {
+		case e.TenantID == "" && route.NoTenantPath != "":
+			// only an event that carries no tenant at all; a tenant that is there and is not a UUID must never take this way (ADR-004 D4)
+			path = route.NoTenantPath
+		case !uuidPattern.MatchString(e.TenantID):
 			return "event has an invalid tenantId"
+		default:
+			path = strings.ReplaceAll(path, tenantPlaceholder, e.TenantID)
 		}
-		path = strings.ReplaceAll(path, tenantPlaceholder, e.TenantID)
 	}
 	if err := r.sink.Deliver(ctx, out.Delivery{Consumer: route.Consumer, Path: path, IdempotencyKey: e.ID, Event: e}); err != nil {
 		return "delivery failed"
