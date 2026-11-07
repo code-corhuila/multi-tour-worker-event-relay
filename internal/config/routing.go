@@ -10,18 +10,27 @@ import (
 )
 
 const (
-	tenantEventsPath  = "/api/v1/security/internal/tenants/{tenantId}/events"
-	sessionEventsPath = "/api/v1/identity-audit/internal/tenants/{tenantId}/events"
+	tenantEventsPath = "/api/v1/security/internal/tenants/{tenantId}/events"
+	// identity-audit records the events of the security microservice, by the path of a tenant and, for an account that
+	// belongs to none, by the path without tenant (ADR-004 D4).
+	auditEventsPath         = "/api/v1/identity-audit/internal/tenants/{tenantId}/events"
+	auditEventsNoTenantPath = "/api/v1/identity-audit/internal/events"
 )
 
-// knownEventTypes are the types the publishers write to their outbox in this cut. AccountBlocked is
-// written by the outbox of multi-tour-security; it is a proposed name that is not in 06-data yet.
+// knownEventTypes are the types the publishers write to their outbox in this cut. The names of the events of
+// multi-tour-security other than AccountSessionsRevoked are proposals that are not in 02-domain yet (gap G-02-EVT).
 var knownEventTypes = map[string]bool{
-	"TenantCreated":          true,
-	"TenantInactivated":      true,
-	"TenantReactivated":      true,
-	"AccountSessionsRevoked": true,
-	"AccountBlocked":         true,
+	"TenantCreated":                    true,
+	"TenantInactivated":                true,
+	"TenantReactivated":                true,
+	"AccountSessionsRevoked":           true,
+	"AccountBlocked":                   true,
+	"SpecialPermissionGranted":         true,
+	"SpecialPermissionRevoked":         true,
+	"OptionalRoleEnabled":              true,
+	"OptionalRoleDisabled":             true,
+	"AccountTemporaryCredentialIssued": true,
+	"AccountEmailVerified":             true,
 }
 
 // RoutingTable maps each event type to the routes that receive it.
@@ -66,20 +75,27 @@ func plainAbsolutePath(path string) bool {
 	return !strings.ContainsFunc(path, func(c rune) bool { return unicode.IsSpace(c) || unicode.IsControl(c) })
 }
 
-// DefaultRoutes is the table of this cut. Security receives the tenant events and identity-audit the session
-// revocations. AccountBlocked has no consumer yet and is marked published without delivery on purpose, so it does
-// not pile up in the outbox.
+// DefaultRoutes is the table of this cut. Security receives the tenant events and identity-audit the six events of
+// the security microservice that the audit records (HU-IDA-002). AccountTemporaryCredentialIssued and
+// AccountEmailVerified have no consumer yet (gap G-CRED) and are marked published without delivery on purpose, so they
+// do not pile up in the outbox.
 // shortcut: spec AC-01.2 (these events reach every service) is met only for the services that expose a receiving
 // route; add one line per consumer when commercial-reservation, operations-cost or cash-reporting publish theirs.
 func DefaultRoutes() map[string][]out.Route {
 	security := []out.Route{{Consumer: "security", Path: tenantEventsPath}}
-	identityAudit := []out.Route{{Consumer: "identity-audit", Path: sessionEventsPath}}
+	identityAudit := []out.Route{{Consumer: "identity-audit", Path: auditEventsPath, NoTenantPath: auditEventsNoTenantPath}}
 	return map[string][]out.Route{
-		"TenantCreated":          security,
-		"TenantInactivated":      security,
-		"TenantReactivated":      security,
-		"AccountSessionsRevoked": identityAudit,
-		"AccountBlocked":         nil,
+		"TenantCreated":                    security,
+		"TenantInactivated":                security,
+		"TenantReactivated":                security,
+		"AccountSessionsRevoked":           identityAudit,
+		"AccountBlocked":                   identityAudit,
+		"SpecialPermissionGranted":         identityAudit,
+		"SpecialPermissionRevoked":         identityAudit,
+		"OptionalRoleEnabled":              identityAudit,
+		"OptionalRoleDisabled":             identityAudit,
+		"AccountTemporaryCredentialIssued": nil,
+		"AccountEmailVerified":             nil,
 	}
 }
 
