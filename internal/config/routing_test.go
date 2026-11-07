@@ -22,6 +22,39 @@ func TestC_startup_fails_with_an_unknown_event_type_in_the_routing_table(t *test
 	}
 }
 
+// RN-WRK7-16: the second path of a route is checked at start, so a typo stops the worker and does not fail every event of a platform account.
+func TestC_routing_table_refuses_an_odd_path_without_tenant(t *testing.T) {
+	tenantPath := "/internal/tenants/{tenantId}/events"
+	odd := map[string]string{
+		"relative":                 "internal/events",
+		"holds the placeholder":    "/internal/{tenantId}/events",
+		"holds a space":            "/internal/events ",
+		"a full address":           "https://audit/internal/events",
+		"a network-path reference": "//audit/internal/events",
+		"a dot segment":            "/internal/../events",
+		"a query":                  "/internal/events?x=1",
+		"a fragment":               "/internal/events#x",
+		"a percent escape":         "/internal/%2e%2e/events",
+		"a backslash":              `/internal\events`,
+		"a closing brace":          "/internal/events}",
+		"a tab":                    "/internal/events\t",
+	}
+	for name, noTenant := range odd {
+		routes := map[string][]out.Route{"AccountBlocked": {{Consumer: "audit", Path: tenantPath, NoTenantPath: noTenant}}}
+		if _, err := config.NewRoutingTable(routes); err == nil {
+			t.Errorf("%s (%q): the table was accepted, want an error at start", name, noTenant)
+		}
+	}
+	good := map[string][]out.Route{"AccountBlocked": {{Consumer: "audit", Path: tenantPath, NoTenantPath: "/internal/events"}}}
+	if _, err := config.NewRoutingTable(good); err != nil {
+		t.Errorf("a plain absolute path without tenant was refused: %v", err)
+	}
+	noPlaceholder := map[string][]out.Route{"AccountBlocked": {{Consumer: "audit", Path: "/internal/events", NoTenantPath: "/internal/platform-events"}}}
+	if _, err := config.NewRoutingTable(noPlaceholder); err == nil {
+		t.Error("a path without tenant on a route whose path has no tenant was accepted: it would be ignored in silence")
+	}
+}
+
 func TestDefaultRoutesAreValidAndSendTenantEventsToSecurity(t *testing.T) {
 	rt, err := config.NewRoutingTable(config.DefaultRoutes())
 	if err != nil {
