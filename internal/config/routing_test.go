@@ -79,20 +79,38 @@ func TestC_default_routes_name_only_the_consumers_the_worker_serves(t *testing.T
 	if got, want := fmt.Sprint(rt.Consumers()), "[identity-audit security]"; got != want {
 		t.Errorf("consumers = %s, want %s", got, want)
 	}
-	if routes, known := rt.RoutesFor("AccountBlocked"); !known || len(routes) != 0 {
-		t.Errorf("AccountBlocked: routes=%v known=%v, want known and with no consumer yet", routes, known)
-	}
 }
 
-// RN-WRK7-09: a revocation of the sessions of an account reaches identity-audit, which keeps the cutoff.
-func TestC_default_routes_send_session_revocations_to_identity_audit(t *testing.T) {
+// RN-WRK7-09 and RN-WRK7-11: the six events of the security microservice that the audit records reach identity-audit,
+// by the path of the tenant and, for an account that belongs to none, by the path without tenant.
+func TestC_default_routes_send_the_audited_security_events_to_identity_audit(t *testing.T) {
 	rt, err := config.NewRoutingTable(config.DefaultRoutes())
 	if err != nil {
 		t.Fatalf("default table: %v", err)
 	}
-	routes, known := rt.RoutesFor("AccountSessionsRevoked")
-	want := out.Route{Consumer: "identity-audit", Path: "/api/v1/identity-audit/internal/tenants/{tenantId}/events"}
-	if !known || len(routes) != 1 || routes[0] != want {
-		t.Errorf("AccountSessionsRevoked: routes=%v known=%v, want %v", routes, known, want)
+	want := out.Route{
+		Consumer:     "identity-audit",
+		Path:         "/api/v1/identity-audit/internal/tenants/{tenantId}/events",
+		NoTenantPath: "/api/v1/identity-audit/internal/events",
+	}
+	for _, eventType := range []string{"AccountSessionsRevoked", "AccountBlocked", "SpecialPermissionGranted",
+		"SpecialPermissionRevoked", "OptionalRoleEnabled", "OptionalRoleDisabled"} {
+		routes, known := rt.RoutesFor(eventType)
+		if !known || len(routes) != 1 || routes[0] != want {
+			t.Errorf("%s: routes=%v known=%v, want %v", eventType, routes, known, want)
+		}
+	}
+}
+
+// RN-WRK7-15: nothing consumes these two yet; they are known, so they are published without delivery and raise no alert.
+func TestC_credential_and_email_events_are_known_and_have_no_consumer(t *testing.T) {
+	rt, err := config.NewRoutingTable(config.DefaultRoutes())
+	if err != nil {
+		t.Fatalf("default table: %v", err)
+	}
+	for _, eventType := range []string{"AccountTemporaryCredentialIssued", "AccountEmailVerified"} {
+		if routes, known := rt.RoutesFor(eventType); !known || len(routes) != 0 {
+			t.Errorf("%s: routes=%v known=%v, want known and with no consumer", eventType, routes, known)
+		}
 	}
 }
