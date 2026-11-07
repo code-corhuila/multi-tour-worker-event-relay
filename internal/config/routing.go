@@ -3,6 +3,8 @@ package config
 import (
 	"fmt"
 	"sort"
+	"strings"
+	"unicode"
 
 	"github.com/code-corhuila/multi-tour-worker-event-relay/internal/application/port/out"
 )
@@ -37,9 +39,31 @@ func NewRoutingTable(routes map[string][]out.Route) (*RoutingTable, error) {
 			if route.Consumer == "" || route.Path == "" {
 				return nil, fmt.Errorf("routing table: event type %q has a route without consumer or path", eventType)
 			}
+			if route.NoTenantPath != "" && !plainAbsolutePath(route.NoTenantPath) {
+				return nil, fmt.Errorf("routing table: event type %q has a path without tenant that is not a plain absolute path", eventType)
+			}
+			if route.NoTenantPath != "" && !strings.Contains(route.Path, "{tenantId}") {
+				// the path without tenant is chosen only where the placeholder is, so here it would be ignored in silence
+				return nil, fmt.Errorf("routing table: event type %q has a path without tenant on a route whose path has no tenant", eventType)
+			}
 		}
 	}
 	return &RoutingTable{routes: routes}, nil
+}
+
+// plainAbsolutePath is a path on the consumer's own host and nothing else: it starts with one slash and holds no
+// placeholder, query, fragment, percent escape, backslash, dot segment, space or control character, so it cannot name
+// another host, climb out of its prefix or leave a tenant out by a typo.
+func plainAbsolutePath(path string) bool {
+	if !strings.HasPrefix(path, "/") || strings.HasPrefix(path, "//") || strings.ContainsAny(path, "{}?#%\\") {
+		return false
+	}
+	for _, segment := range strings.Split(path, "/") {
+		if segment == ".." || segment == "." {
+			return false
+		}
+	}
+	return !strings.ContainsFunc(path, func(c rune) bool { return unicode.IsSpace(c) || unicode.IsControl(c) })
 }
 
 // DefaultRoutes is the table of this cut. Security receives the tenant events and identity-audit the session

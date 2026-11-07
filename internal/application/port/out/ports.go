@@ -18,10 +18,12 @@ type Event struct {
 }
 
 // Route is where one event type goes: a consumer and its internal path.
-// The path may hold the {tenantId} placeholder.
+// The path may hold the {tenantId} placeholder. NoTenantPath, when the consumer has one, is where an event that carries
+// no tenant goes instead (ADR-004 D4); it never holds the placeholder.
 type Route struct {
-	Consumer string
-	Path     string
+	Consumer     string
+	Path         string
+	NoTenantPath string
 }
 
 // Delivery is one event sent to one consumer route; IdempotencyKey is the event id.
