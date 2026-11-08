@@ -76,7 +76,7 @@ func TestC_default_routes_name_only_the_consumers_the_worker_serves(t *testing.T
 	if err != nil {
 		t.Fatalf("default table: %v", err)
 	}
-	if got, want := fmt.Sprint(rt.Consumers()), "[identity-audit security]"; got != want {
+	if got, want := fmt.Sprint(rt.Consumers()), "[commercial-reservation identity-audit security]"; got != want {
 		t.Errorf("consumers = %s, want %s", got, want)
 	}
 }
@@ -112,5 +112,32 @@ func TestC_credential_and_email_events_are_known_and_have_no_consumer(t *testing
 		if routes, known := rt.RoutesFor(eventType); !known || len(routes) != 0 {
 			t.Errorf("%s: routes=%v known=%v, want known and with no consumer", eventType, routes, known)
 		}
+	}
+}
+
+// HU-OPS-001 AC5: a scheduled departure reaches commercial-reservation, which creates the capacity row from it, by the one route
+// where that service receives events. Its payload is what operations-cost writes.
+func TestC_default_routes_send_the_scheduled_departure_to_commercial_reservation(t *testing.T) {
+	rt, err := config.NewRoutingTable(config.DefaultRoutes())
+	if err != nil {
+		t.Fatalf("default table: %v", err)
+	}
+	want := out.Route{Consumer: "commercial-reservation", Path: "/api/v1/commercial-reservation/internal/tenants/{tenantId}/events"}
+	routes, known := rt.RoutesFor("SalidaScheduled")
+	if !known || len(routes) != 1 || routes[0] != want {
+		t.Errorf("SalidaScheduled: routes=%v known=%v, want %v", routes, known, want)
+	}
+}
+
+// Gap G-API-2: commercial-reservation does not accept SalidaRescheduled (its route answers 400 to a type it does not name, and the
+// event would end FAILED after twenty attempts). It is known, so it is published without delivery and raises no alert, until
+// that service accepts it; then it gets the same route as SalidaScheduled.
+func TestC_the_rescheduled_departure_is_known_and_has_no_consumer_until_commercial_reservation_accepts_it(t *testing.T) {
+	rt, err := config.NewRoutingTable(config.DefaultRoutes())
+	if err != nil {
+		t.Fatalf("default table: %v", err)
+	}
+	if routes, known := rt.RoutesFor("SalidaRescheduled"); !known || len(routes) != 0 {
+		t.Errorf("SalidaRescheduled: routes=%v known=%v, want known and with no consumer", routes, known)
 	}
 }
