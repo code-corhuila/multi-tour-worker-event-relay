@@ -20,6 +20,8 @@ var required = []string{
 	"SERVICE_TOKEN", "t",
 	"SECURITY_BASE_URL", "http://security:8080",
 	"IDENTITY_AUDIT_BASE_URL", "http://identity-audit-api:8080/",
+	"OPERATIONS_COST_BASE_URL", "http://operations-cost-api:8084",
+	"COMMERCIAL_RESERVATION_BASE_URL", "http://commercial-reservation-api:8083/",
 }
 
 func TestLoadRelay_applies_the_declared_defaults(t *testing.T) {
@@ -33,6 +35,9 @@ func TestLoadRelay_applies_the_declared_defaults(t *testing.T) {
 	}
 	if got.SecurityURL != "http://security:8080" || got.IdentityAuditURL != "http://identity-audit-api:8080" {
 		t.Errorf("urls = %q, %q", got.SecurityURL, got.IdentityAuditURL)
+	}
+	if got.OperationsCostURL != "http://operations-cost-api:8084" || got.CommercialReservationURL != "http://commercial-reservation-api:8083" {
+		t.Errorf("urls = %q, %q", got.OperationsCostURL, got.CommercialReservationURL)
 	}
 }
 
@@ -49,16 +54,19 @@ func TestLoadRelay_reads_the_overrides(t *testing.T) {
 
 func TestLoadRelay_refuses_to_start_on_a_bad_value(t *testing.T) {
 	cases := map[string][]string{
-		"missing security url":       {"SERVICE_TOKEN", "t", "IDENTITY_AUDIT_BASE_URL", "http://a:1"},
-		"missing identity-audit url": {"SERVICE_TOKEN", "t", "SECURITY_BASE_URL", "http://a:1"},
-		"url without scheme":         append(append([]string{}, required...), "SECURITY_BASE_URL", "security:8080"),
-		"missing token":              {"SECURITY_BASE_URL", "http://a:1", "IDENTITY_AUDIT_BASE_URL", "http://b:1"},
-		"bad interval":               append(append([]string{}, required...), "RELAY_INTERVAL", "soon"),
-		"zero interval":              append(append([]string{}, required...), "RELAY_INTERVAL", "0s"),
-		"url with credentials":       append(append([]string{}, required...), "SECURITY_BASE_URL", "http://user:pw-9x@security:8086"),
-		"url with a query":           append(append([]string{}, required...), "SECURITY_BASE_URL", "http://security:8086?token=pw-9x"),
-		"url with a fragment":        append(append([]string{}, required...), "SECURITY_BASE_URL", "http://security:8086#pw-9x"),
-		"url with a path":            append(append([]string{}, required...), "SECURITY_BASE_URL", "http://security:8086/pw-9x"),
+		"missing security url":               {"SERVICE_TOKEN", "t", "IDENTITY_AUDIT_BASE_URL", "http://a:1", "OPERATIONS_COST_BASE_URL", "http://c:1", "COMMERCIAL_RESERVATION_BASE_URL", "http://d:1"},
+		"missing identity-audit url":         {"SERVICE_TOKEN", "t", "SECURITY_BASE_URL", "http://a:1", "OPERATIONS_COST_BASE_URL", "http://c:1", "COMMERCIAL_RESERVATION_BASE_URL", "http://d:1"},
+		"missing operations-cost url":        {"SERVICE_TOKEN", "t", "SECURITY_BASE_URL", "http://a:1", "IDENTITY_AUDIT_BASE_URL", "http://b:1", "COMMERCIAL_RESERVATION_BASE_URL", "http://d:1"},
+		"missing commercial-reservation url": {"SERVICE_TOKEN", "t", "SECURITY_BASE_URL", "http://a:1", "IDENTITY_AUDIT_BASE_URL", "http://b:1", "OPERATIONS_COST_BASE_URL", "http://c:1"},
+		"operations-cost url with a path":    append(append([]string{}, required...), "OPERATIONS_COST_BASE_URL", "http://operations-cost-api:8084/pw-9x"),
+		"url without scheme":                 append(append([]string{}, required...), "SECURITY_BASE_URL", "security:8080"),
+		"missing token":                      {"SECURITY_BASE_URL", "http://a:1", "IDENTITY_AUDIT_BASE_URL", "http://b:1", "OPERATIONS_COST_BASE_URL", "http://c:1", "COMMERCIAL_RESERVATION_BASE_URL", "http://d:1"},
+		"bad interval":                       append(append([]string{}, required...), "RELAY_INTERVAL", "soon"),
+		"zero interval":                      append(append([]string{}, required...), "RELAY_INTERVAL", "0s"),
+		"url with credentials":               append(append([]string{}, required...), "SECURITY_BASE_URL", "http://user:pw-9x@security:8086"),
+		"url with a query":                   append(append([]string{}, required...), "SECURITY_BASE_URL", "http://security:8086?token=pw-9x"),
+		"url with a fragment":                append(append([]string{}, required...), "SECURITY_BASE_URL", "http://security:8086#pw-9x"),
+		"url with a path":                    append(append([]string{}, required...), "SECURITY_BASE_URL", "http://security:8086/pw-9x"),
 	}
 	for name, pairs := range cases {
 		t.Run(name, func(t *testing.T) {

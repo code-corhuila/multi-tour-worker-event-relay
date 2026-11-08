@@ -15,6 +15,8 @@ const (
 	// belongs to none, by the path without tenant (ADR-004 D4).
 	auditEventsPath         = "/api/v1/identity-audit/internal/tenants/{tenantId}/events"
 	auditEventsNoTenantPath = "/api/v1/identity-audit/internal/events"
+	// commercial-reservation keeps the capacity row of each departure and creates it from SalidaScheduled (ADR-004 D4, HU-OPS-001 AC5).
+	reservationEventsPath = "/api/v1/commercial-reservation/internal/tenants/{tenantId}/events"
 )
 
 // knownEventTypes are the types the publishers write to their outbox in this cut. The names of the events of
@@ -31,6 +33,8 @@ var knownEventTypes = map[string]bool{
 	"OptionalRoleDisabled":             true,
 	"AccountTemporaryCredentialIssued": true,
 	"AccountEmailVerified":             true,
+	"SalidaScheduled":                  true,
+	"SalidaRescheduled":                true,
 }
 
 // RoutingTable maps each event type to the routes that receive it.
@@ -84,6 +88,7 @@ func plainAbsolutePath(path string) bool {
 func DefaultRoutes() map[string][]out.Route {
 	security := []out.Route{{Consumer: "security", Path: tenantEventsPath}}
 	identityAudit := []out.Route{{Consumer: "identity-audit", Path: auditEventsPath, NoTenantPath: auditEventsNoTenantPath}}
+	reservations := []out.Route{{Consumer: "commercial-reservation", Path: reservationEventsPath}}
 	return map[string][]out.Route{
 		"TenantCreated":                    security,
 		"TenantInactivated":                security,
@@ -96,6 +101,10 @@ func DefaultRoutes() map[string][]out.Route {
 		"OptionalRoleDisabled":             identityAudit,
 		"AccountTemporaryCredentialIssued": nil,
 		"AccountEmailVerified":             nil,
+		"SalidaScheduled":                  reservations,
+		// Gap G-API-2: commercial-reservation does not accept SalidaRescheduled yet (it would answer 400 and the event would end
+		// FAILED after twenty attempts), so it is published without delivery until it does; then it takes the same route.
+		"SalidaRescheduled": nil,
 	}
 }
 
