@@ -40,6 +40,8 @@ Variables (all read at start; a missing or malformed one stops the worker):
 | `SERVICE_TOKEN` | none, required | Service credential, sent as `Authorization: Bearer` |
 | `SECURITY_BASE_URL` | none, required (e.g. `http://security:8086`; compose also requires it) | Internal base URL of `multi-tour-security` (publisher and recipient) |
 | `IDENTITY_AUDIT_BASE_URL` | none, required (e.g. `http://identity-audit-api:8082`; compose also requires it) | Internal base URL of `multi-tour-identity-audit-api` (publisher) |
+| `OPERATIONS_COST_BASE_URL` | none, required (e.g. `http://operations-cost-api:8084`; compose also requires it) | Internal base URL of `multi-tour-operations-cost-api` (publisher: its scheduled and rescheduled departures) |
+| `COMMERCIAL_RESERVATION_BASE_URL` | none, required (e.g. `http://commercial-reservation-api:8083`; compose also requires it) | Internal base URL of `multi-tour-commercial-reservation-api` (consumer of `SalidaScheduled`) |
 | `RELAY_INTERVAL` | `5s` | Time between two runs |
 | `BATCH_SIZE` | `100` | Events handled at most per run |
 | `RUN_TIMEOUT` | `30s` | Time limit of one run |
@@ -81,3 +83,5 @@ branch into another: `merge develop -> qa` and `merge qa -> main` do not exist i
 rule.
 
 Full policy: `00-governance/branching-policy.md` in `multi-tour-docs`.
+
+`SalidaScheduled` of `multi-tour-operations-cost-api` goes to `multi-tour-commercial-reservation-api`, which creates the capacity row of the departure from it (HU-OPS-001, AC5). `SalidaRescheduled` is known and has no consumer: commercial-reservation does not accept it yet (gap G-API-2 of spec 002 of the operations-cost API), so it is published without delivery; when it does, it takes the same route as `SalidaScheduled`. The relay reads page 1 of each outbox until it is empty, so the events it marks published do not shift the pages (the outbox of operations-cost lists the events that are due, oldest first).

@@ -51,7 +51,10 @@ func run() error {
 			httpclient.WithTimeout(cfg.Runtime.HTTPTimeout), httpclient.WithAttempts(cfg.Runtime.HTTPAttempts))
 	}
 	security, identityAudit := client(cfg.SecurityURL), client(cfg.IdentityAuditURL)
-	consumers := map[string]*httpclient.Client{"security": security, "identity-audit": identityAudit}
+	operationsCost, commercialReservation := client(cfg.OperationsCostURL), client(cfg.CommercialReservationURL)
+	consumers := map[string]*httpclient.Client{
+		"security": security, "identity-audit": identityAudit, "commercial-reservation": commercialReservation,
+	}
 	for _, name := range table.Consumers() {
 		if consumers[name] == nil {
 			return fmt.Errorf("the routing table delivers to %q, which has no client", name)
@@ -61,6 +64,7 @@ func run() error {
 		[]usecase.Publisher{
 			{Name: "identity-audit", Source: relayhttp.NewOutbox(identityAudit, "/api/v1/identity-audit/internal/outbox")},
 			{Name: "security", Source: relayhttp.NewOutbox(security, "/api/v1/security/internal/outbox")},
+			{Name: "operations-cost", Source: relayhttp.NewOutbox(operationsCost, "/api/v1/operations-cost/internal/outbox")},
 		},
 		table,
 		relayhttp.NewSink(consumers),
