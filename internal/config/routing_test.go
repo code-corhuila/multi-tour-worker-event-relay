@@ -141,3 +141,45 @@ func TestC_the_rescheduled_departure_is_known_and_has_no_consumer_until_commerci
 		t.Errorf("SalidaRescheduled: routes=%v known=%v, want known and with no consumer", routes, known)
 	}
 }
+
+// HU-SEC-004, relay spec 003: the facts of a password recovery reach the audit, also for the Platform Administrator.
+var passwordRecoveryFacts = []string{"PasswordRecoveryRequested", "PasswordReset", "PasswordResetFailed"}
+
+func TestNewRoutingTable_KnowsThePasswordRecoveryFacts(t *testing.T) {
+	rt, err := config.NewRoutingTable(config.DefaultRoutes())
+	if err != nil {
+		t.Fatalf("default table: %v", err)
+	}
+	for _, eventType := range passwordRecoveryFacts {
+		if _, known := rt.RoutesFor(eventType); !known {
+			t.Errorf("%s is not known to the routing table", eventType)
+		}
+	}
+}
+
+func TestDefaultRoutes_PasswordRecoveryFactsGoToTheAudit(t *testing.T) {
+	rt, err := config.NewRoutingTable(config.DefaultRoutes())
+	if err != nil {
+		t.Fatalf("default table: %v", err)
+	}
+	for _, eventType := range passwordRecoveryFacts {
+		routes, _ := rt.RoutesFor(eventType)
+		if len(routes) != 1 || routes[0].Consumer != "identity-audit" ||
+			routes[0].Path != "/api/v1/identity-audit/internal/tenants/{tenantId}/events" {
+			t.Errorf("%s: routes=%v, want one route to identity-audit by tenant", eventType, routes)
+		}
+	}
+}
+
+func TestDefaultRoutes_PasswordRecoveryFactsOfThePlatformUseTheNoTenantPath(t *testing.T) {
+	rt, err := config.NewRoutingTable(config.DefaultRoutes())
+	if err != nil {
+		t.Fatalf("default table: %v", err)
+	}
+	for _, eventType := range passwordRecoveryFacts {
+		routes, _ := rt.RoutesFor(eventType)
+		if len(routes) != 1 || routes[0].NoTenantPath != "/api/v1/identity-audit/internal/events" {
+			t.Errorf("%s: routes=%v, want the path without tenant of identity-audit", eventType, routes)
+		}
+	}
+}
