@@ -183,3 +183,27 @@ func TestDefaultRoutes_PasswordRecoveryFactsOfThePlatformUseTheNoTenantPath(t *t
 		}
 	}
 }
+
+// HU-OPS-002, relay spec 004: the new total of the vehicles of a departure reaches commercial-reservation, which already
+// updates the seats of the departure from it, by the same route as the scheduled departure.
+func TestNewRoutingTable_KnowsTheVehicleChange(t *testing.T) {
+	rt, err := config.NewRoutingTable(config.DefaultRoutes())
+	if err != nil {
+		t.Fatalf("default table: %v", err)
+	}
+	if _, known := rt.RoutesFor("SalidaVehiclesChanged"); !known {
+		t.Error("SalidaVehiclesChanged is not a known event type")
+	}
+}
+
+func TestC_default_routes_send_the_vehicle_change_to_commercial_reservation(t *testing.T) {
+	rt, err := config.NewRoutingTable(config.DefaultRoutes())
+	if err != nil {
+		t.Fatalf("default table: %v", err)
+	}
+	want := out.Route{Consumer: "commercial-reservation", Path: "/api/v1/commercial-reservation/internal/tenants/{tenantId}/events"}
+	routes, known := rt.RoutesFor("SalidaVehiclesChanged")
+	if !known || len(routes) != 1 || routes[0] != want {
+		t.Errorf("SalidaVehiclesChanged: routes=%v known=%v, want %v", routes, known, want)
+	}
+}
