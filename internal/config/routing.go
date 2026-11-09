@@ -17,6 +17,10 @@ const (
 	auditEventsNoTenantPath = "/api/v1/identity-audit/internal/events"
 	// commercial-reservation keeps the capacity row of each departure and creates it from SalidaScheduled (ADR-004 D4, HU-OPS-001 AC5).
 	reservationEventsPath = "/api/v1/commercial-reservation/internal/tenants/{tenantId}/events"
+
+	// job 4 receives the facts of a reset it tells the owner about (relay spec 009)
+	notificationsEventsPath         = "/api/v1/notifications/internal/tenants/{tenantId}/events"
+	notificationsEventsNoTenantPath = "/api/v1/notifications/internal/events"
 )
 
 // knownEventTypes are the types the publishers write to their outbox in this cut. The names of the events of
@@ -117,6 +121,8 @@ func DefaultRoutes() map[string][]out.Route {
 	identityAudit := []out.Route{{Consumer: "identity-audit", Path: auditEventsPath, NoTenantPath: auditEventsNoTenantPath}}
 	reservations := []out.Route{{Consumer: "commercial-reservation", Path: reservationEventsPath}}
 	securityAndReservations := []out.Route{security[0], reservations[0]}
+	notifications := out.Route{Consumer: "notifications", Path: notificationsEventsPath, NoTenantPath: notificationsEventsNoTenantPath}
+	auditAndNotifications := []out.Route{identityAudit[0], notifications}
 	return map[string][]out.Route{
 		"TenantCreated":                    securityAndReservations,
 		"TenantInactivated":                securityAndReservations,
@@ -128,8 +134,8 @@ func DefaultRoutes() map[string][]out.Route {
 		"OptionalRoleEnabled":              identityAudit,
 		"OptionalRoleDisabled":             identityAudit,
 		"PasswordRecoveryRequested":        identityAudit,
-		"PasswordReset":                    identityAudit,
-		"PasswordResetFailed":              identityAudit,
+		"PasswordReset":                    auditAndNotifications,
+		"PasswordResetFailed":              auditAndNotifications,
 		"AccountTemporaryCredentialIssued": nil,
 		// commercial-reservation links the account to the customer of that tenant and the audit records it (relay spec 007).
 		"AccountEmailVerified":   {reservations[0], identityAudit[0]},

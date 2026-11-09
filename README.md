@@ -42,6 +42,7 @@ Variables (all read at start; a missing or malformed one stops the worker):
 | `IDENTITY_AUDIT_BASE_URL` | none, required (e.g. `http://identity-audit-api:8082`; compose also requires it) | Internal base URL of `multi-tour-identity-audit-api` (publisher) |
 | `OPERATIONS_COST_BASE_URL` | none, required (e.g. `http://operations-cost-api:8084`; compose also requires it) | Internal base URL of `multi-tour-operations-cost-api` (publisher: its scheduled and rescheduled departures) |
 | `COMMERCIAL_RESERVATION_BASE_URL` | none, required (e.g. `http://commercial-reservation-api:8083`; compose also requires it) | Internal base URL of `multi-tour-commercial-reservation-api` (consumer of `SalidaScheduled`, `SalidaVehiclesChanged`, `SalidaExecutionStarted` and `SalidaFinalized`) |
+| `NOTIFICATIONS_BASE_URL` | none, required (e.g. `http://worker-notifications:8080`; compose also requires it) | Internal base URL of `multi-tour-worker-notifications` (consumer of `PasswordReset` and `PasswordResetFailed`, which it tells the owner of an administrative account about) |
 | `RELAY_INTERVAL` | `5s` | Time between two runs |
 | `BATCH_SIZE` | `100` | Events handled at most per run |
 | `RUN_TIMEOUT` | `30s` | Time limit of one run |
