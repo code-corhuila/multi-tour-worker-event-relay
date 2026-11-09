@@ -7,7 +7,7 @@ Governance and documentation live in [`multi-tour-docs`](https://github.com/code
 
 ## What it is
 
-Worker job 7 (ADR-004 D3, D10): it reads the outbox of each publishing domain through its internal API and delivers every event to the consumers listed in its routing table. It holds no business rule and exposes only `/health`.
+Worker job 7 (ADR-004 D3, D10): it reads the outbox of each publishing domain through its internal API and delivers every event to the consumers listed in its routing table. It reads four outboxes: `identity-audit`, `security`, `operations-cost` and `commercial-reservation`. The tenant events reach `security` and `commercial-reservation`; `AccountEmailVerified` reaches `commercial-reservation` (it links the account to the customer of that tenant) and the audit; and the 14 events that `commercial-reservation` writes reach the audit (relay spec 007). What is not routed yet: `cash-reporting` (its outbox has no route to read it), `AccountSessionsRevoked` towards the domains, and the tenant events towards `cash-reporting` and `operations-cost`, because none of them has a receiving route. It holds no business rule and exposes only `/health`.
 
 ## The service token
 
