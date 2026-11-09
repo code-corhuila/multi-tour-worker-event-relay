@@ -60,12 +60,14 @@ func run() error {
 			return fmt.Errorf("the routing table delivers to %q, which has no client", name)
 		}
 	}
+	publishers, err := relayhttp.DefaultPublishers(map[string]*httpclient.Client{
+		"identity-audit": identityAudit, "security": security, "operations-cost": operationsCost, "commercial-reservation": commercialReservation,
+	})
+	if err != nil {
+		return err
+	}
 	job := usecase.NewRelayEvents(
-		[]usecase.Publisher{
-			{Name: "identity-audit", Source: relayhttp.NewOutbox(identityAudit, "/api/v1/identity-audit/internal/outbox")},
-			{Name: "security", Source: relayhttp.NewOutbox(security, "/api/v1/security/internal/outbox")},
-			{Name: "operations-cost", Source: relayhttp.NewOutbox(operationsCost, "/api/v1/operations-cost/internal/outbox")},
-		},
+		publishers,
 		table,
 		relayhttp.NewSink(consumers),
 		log,
