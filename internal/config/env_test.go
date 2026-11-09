@@ -22,6 +22,7 @@ var required = []string{
 	"IDENTITY_AUDIT_BASE_URL", "http://identity-audit-api:8080/",
 	"OPERATIONS_COST_BASE_URL", "http://operations-cost-api:8084",
 	"COMMERCIAL_RESERVATION_BASE_URL", "http://commercial-reservation-api:8083/",
+	"NOTIFICATIONS_BASE_URL", "http://worker-notifications:8080/",
 }
 
 func TestLoadRelay_applies_the_declared_defaults(t *testing.T) {
@@ -35,6 +36,9 @@ func TestLoadRelay_applies_the_declared_defaults(t *testing.T) {
 	}
 	if got.SecurityURL != "http://security:8080" || got.IdentityAuditURL != "http://identity-audit-api:8080" {
 		t.Errorf("urls = %q, %q", got.SecurityURL, got.IdentityAuditURL)
+	}
+	if got.NotificationsURL != "http://worker-notifications:8080" {
+		t.Errorf("notifications url = %q", got.NotificationsURL)
 	}
 	if got.OperationsCostURL != "http://operations-cost-api:8084" || got.CommercialReservationURL != "http://commercial-reservation-api:8083" {
 		t.Errorf("urls = %q, %q", got.OperationsCostURL, got.CommercialReservationURL)
@@ -58,6 +62,8 @@ func TestLoadRelay_refuses_to_start_on_a_bad_value(t *testing.T) {
 		"missing identity-audit url":         {"SERVICE_TOKEN", "t", "SECURITY_BASE_URL", "http://a:1", "OPERATIONS_COST_BASE_URL", "http://c:1", "COMMERCIAL_RESERVATION_BASE_URL", "http://d:1"},
 		"missing operations-cost url":        {"SERVICE_TOKEN", "t", "SECURITY_BASE_URL", "http://a:1", "IDENTITY_AUDIT_BASE_URL", "http://b:1", "COMMERCIAL_RESERVATION_BASE_URL", "http://d:1"},
 		"missing commercial-reservation url": {"SERVICE_TOKEN", "t", "SECURITY_BASE_URL", "http://a:1", "IDENTITY_AUDIT_BASE_URL", "http://b:1", "OPERATIONS_COST_BASE_URL", "http://c:1"},
+		"missing notifications url":          {"SERVICE_TOKEN", "t", "SECURITY_BASE_URL", "http://a:1", "IDENTITY_AUDIT_BASE_URL", "http://b:1", "OPERATIONS_COST_BASE_URL", "http://c:1", "COMMERCIAL_RESERVATION_BASE_URL", "http://d:1"},
+		"notifications url with a path":      append(append([]string{}, required...), "NOTIFICATIONS_BASE_URL", "http://worker-notifications:8080/pw-9x"),
 		"operations-cost url with a path":    append(append([]string{}, required...), "OPERATIONS_COST_BASE_URL", "http://operations-cost-api:8084/pw-9x"),
 		"url without scheme":                 append(append([]string{}, required...), "SECURITY_BASE_URL", "security:8080"),
 		"missing token":                      {"SECURITY_BASE_URL", "http://a:1", "IDENTITY_AUDIT_BASE_URL", "http://b:1", "OPERATIONS_COST_BASE_URL", "http://c:1", "COMMERCIAL_RESERVATION_BASE_URL", "http://d:1"},

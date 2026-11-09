@@ -212,9 +212,9 @@ func TestDefaultRoutes_PasswordRecoveryFactsGoToTheAudit(t *testing.T) {
 	}
 	for _, eventType := range passwordRecoveryFacts {
 		routes, _ := rt.RoutesFor(eventType)
-		if len(routes) != 1 || routes[0].Consumer != "identity-audit" ||
+		if len(routes) == 0 || routes[0].Consumer != "identity-audit" ||
 			routes[0].Path != "/api/v1/identity-audit/internal/tenants/{tenantId}/events" {
-			t.Errorf("%s: routes=%v, want one route to identity-audit by tenant", eventType, routes)
+			t.Errorf("%s: routes=%v, want the first route to identity-audit by tenant", eventType, routes)
 		}
 	}
 }
@@ -226,9 +226,29 @@ func TestDefaultRoutes_PasswordRecoveryFactsOfThePlatformUseTheNoTenantPath(t *t
 	}
 	for _, eventType := range passwordRecoveryFacts {
 		routes, _ := rt.RoutesFor(eventType)
-		if len(routes) != 1 || routes[0].NoTenantPath != "/api/v1/identity-audit/internal/events" {
+		if len(routes) == 0 || routes[0].NoTenantPath != "/api/v1/identity-audit/internal/events" {
 			t.Errorf("%s: routes=%v, want the path without tenant of identity-audit", eventType, routes)
 		}
+	}
+}
+
+// HU-WRK-004, relay spec 009: the two facts of a reset that job 4 tells the owner about also reach notifications, by tenant and, for the
+// Platform Administrator, with no tenant; the request for a code is not one of them.
+func TestDefaultRoutes_TheResetFactsAlsoReachNotifications(t *testing.T) {
+	rt, err := config.NewRoutingTable(config.DefaultRoutes())
+	if err != nil {
+		t.Fatalf("default table: %v", err)
+	}
+	for _, eventType := range []string{"PasswordReset", "PasswordResetFailed"} {
+		routes, _ := rt.RoutesFor(eventType)
+		if len(routes) != 2 || routes[1].Consumer != "notifications" ||
+			routes[1].Path != "/api/v1/notifications/internal/tenants/{tenantId}/events" ||
+			routes[1].NoTenantPath != "/api/v1/notifications/internal/events" {
+			t.Errorf("%s: routes=%v, want the audit and then notifications", eventType, routes)
+		}
+	}
+	if routes, _ := rt.RoutesFor("PasswordRecoveryRequested"); len(routes) != 1 {
+		t.Errorf("PasswordRecoveryRequested: routes=%v, want only the audit", routes)
 	}
 }
 
