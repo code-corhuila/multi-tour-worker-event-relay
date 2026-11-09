@@ -85,6 +85,67 @@ func TestOutbox_lists_the_first_page_of_pending_events(t *testing.T) {
 	}
 }
 
+// Relay spec 008 (AC-RL-08.1): the actor and the reason of the source envelope travel with the event.
+func TestOutbox_reads_the_actor_and_the_reason(t *testing.T) {
+	page := `{"data":[{"eventId":"` + eventID + `","eventType":"SpecialPermissionGranted","eventVersion":1,
+		"tenantId":"` + tenantID + `","aggregateId":"` + tenantID + `","actorId":"00000000-0000-4000-8000-0000000000aa","reason":"Needs the cash",
+		"payload":{},"occurredAt":"2026-10-11T10:00:00Z","status":"PENDING","attempts":0}],
+		"meta":{"page":1,"limit":50,"total":1,"totalPages":1}}`
+	srv, _ := fakeAPI(t, 200, page)
+
+	events, err := relayhttp.NewOutbox(newClient(srv.URL), outboxPath).ListPending(ctx(), 1, 50)
+
+	if err != nil || len(events) != 1 {
+		t.Fatalf("events=%v err=%v", events, err)
+	}
+	if events[0].ActorID != "00000000-0000-4000-8000-0000000000aa" || events[0].Reason != "Needs the cash" {
+		t.Errorf("actor=%q reason=%q", events[0].ActorID, events[0].Reason)
+	}
+}
+
+func TestSink_sends_the_actor_and_the_reason(t *testing.T) {
+	srv, seen := fakeAPI(t, 201, ``)
+	sink := relayhttp.NewSink(map[string]*httpclient.Client{"identity-audit": newClient(srv.URL)})
+
+	err := sink.Deliver(ctx(), out.Delivery{Consumer: "identity-audit", IdempotencyKey: eventID, Path: "/x",
+		Event: out.Event{ID: eventID, Type: "SpecialPermissionGranted", Version: 1, TenantID: tenantID, AggregateID: tenantID,
+			ActorID: "00000000-0000-4000-8000-0000000000aa", Reason: "Needs the cash", Payload: json.RawMessage(`{}`),
+			OccurredAt: time.Date(2026, 10, 11, 10, 0, 0, 0, time.UTC)}})
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	var body map[string]any
+	if err := json.Unmarshal(seen.body, &body); err != nil {
+		t.Fatalf("body is not JSON: %s", seen.body)
+	}
+	if body["actorId"] != "00000000-0000-4000-8000-0000000000aa" || body["reason"] != "Needs the cash" {
+		t.Errorf("envelope = %s", seen.body)
+	}
+}
+
+// Relay spec 008 (AC-RL-08.2): an event with no actor and no reason (the ones of commercial-reservation today) is sent as before.
+func TestSink_omits_the_actor_and_the_reason_when_the_event_has_none(t *testing.T) {
+	srv, seen := fakeAPI(t, 201, ``)
+	sink := relayhttp.NewSink(map[string]*httpclient.Client{"identity-audit": newClient(srv.URL)})
+
+	err := sink.Deliver(ctx(), out.Delivery{Consumer: "identity-audit", IdempotencyKey: eventID, Path: "/x",
+		Event: out.Event{ID: eventID, Type: "ReservationCreated", Version: 1, TenantID: tenantID, AggregateID: tenantID,
+			Payload: json.RawMessage(`{}`), OccurredAt: time.Date(2026, 10, 11, 10, 0, 0, 0, time.UTC)}})
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	var body map[string]any
+	_ = json.Unmarshal(seen.body, &body)
+	if _, has := body["actorId"]; has {
+		t.Errorf("actorId should be omitted: %s", seen.body)
+	}
+	if _, has := body["reason"]; has {
+		t.Errorf("reason should be omitted: %s", seen.body)
+	}
+}
+
 func TestOutbox_marks_an_event_published(t *testing.T) {
 	srv, seen := fakeAPI(t, 200, `{"eventId":"`+eventID+`","status":"PUBLISHED"}`)
 
