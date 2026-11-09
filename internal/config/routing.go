@@ -39,6 +39,8 @@ var knownEventTypes = map[string]bool{
 	"SalidaScheduled":                  true,
 	"SalidaRescheduled":                true,
 	"SalidaVehiclesChanged":            true,
+	"SalidaExecutionStarted":           true,
+	"SalidaFinalized":                  true,
 }
 
 // RoutingTable maps each event type to the routes that receive it.
@@ -85,7 +87,7 @@ func plainAbsolutePath(path string) bool {
 
 // DefaultRoutes is the table of this cut. Security receives the tenant events; identity-audit the nine events of the
 // security microservice that the audit records (HU-IDA-002, and the three of the password recovery of HU-SEC-004);
-// commercial-reservation the scheduled departure of operations-cost and the new total of its vehicles (HU-OPS-002). AccountTemporaryCredentialIssued and
+// commercial-reservation the scheduled departure of operations-cost and the new total of its vehicles (HU-OPS-002), and the start and the end of a departure (HU-OPS-003). AccountTemporaryCredentialIssued and
 // SalidaRescheduled have no consumer yet; AccountEmailVerified is accepted by commercial-reservation (HU-COM-005) but is
 // not routed to it yet. The three are marked published without delivery on purpose, so they do not pile up in the outbox.
 // shortcut: spec AC-01.2 (TenantInactivated, TenantReactivated and AccountSessionsRevoked reach every service) is met
@@ -112,6 +114,8 @@ func DefaultRoutes() map[string][]out.Route {
 		"AccountEmailVerified":             nil,
 		"SalidaScheduled":                  reservations,
 		"SalidaVehiclesChanged":            reservations,
+		"SalidaExecutionStarted":           reservations,
+		"SalidaFinalized":                  reservations,
 		// Gap G-API-2: commercial-reservation does not accept SalidaRescheduled yet (it would answer 400 and the event would end
 		// FAILED after twenty attempts), so it is published without delivery until it does; then it takes the same route.
 		"SalidaRescheduled": nil,
