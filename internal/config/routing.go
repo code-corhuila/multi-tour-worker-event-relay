@@ -87,8 +87,8 @@ func plainAbsolutePath(path string) bool {
 
 // DefaultRoutes is the table of this cut. Security receives the tenant events; identity-audit the nine events of the
 // security microservice that the audit records (HU-IDA-002, and the three of the password recovery of HU-SEC-004);
-// commercial-reservation the scheduled departure of operations-cost and the new total of its vehicles (HU-OPS-002), and the start and the end of a departure (HU-OPS-003). AccountTemporaryCredentialIssued and
-// SalidaRescheduled have no consumer yet; AccountEmailVerified is accepted by commercial-reservation (HU-COM-005) but is
+// commercial-reservation the scheduled departure of operations-cost, the new total of its vehicles (HU-OPS-002) and its
+// start and end (HU-OPS-003). AccountTemporaryCredentialIssued and SalidaRescheduled have no consumer yet; AccountEmailVerified is accepted by commercial-reservation (HU-COM-005) but is
 // not routed to it yet. The three are marked published without delivery on purpose, so they do not pile up in the outbox.
 // shortcut: spec AC-01.2 (TenantInactivated, TenantReactivated and AccountSessionsRevoked reach every service) is met
 // only in part; add one line per consumer as each service exposes its receiving route (commercial-reservation already
