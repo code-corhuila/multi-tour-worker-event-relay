@@ -207,3 +207,31 @@ func TestC_default_routes_send_the_vehicle_change_to_commercial_reservation(t *t
 		t.Errorf("SalidaVehiclesChanged: routes=%v known=%v, want %v", routes, known, want)
 	}
 }
+
+// HU-OPS-003, relay spec 005: the start and the end of a departure reach commercial-reservation, which already accepts both on
+// the route of the scheduled departure.
+func TestNewRoutingTable_KnowsTheStartAndTheEnd(t *testing.T) {
+	rt, err := config.NewRoutingTable(config.DefaultRoutes())
+	if err != nil {
+		t.Fatalf("default table: %v", err)
+	}
+	for _, eventType := range []string{"SalidaExecutionStarted", "SalidaFinalized"} {
+		if _, known := rt.RoutesFor(eventType); !known {
+			t.Errorf("%s is not a known event type", eventType)
+		}
+	}
+}
+
+func TestC_default_routes_send_the_start_and_the_end_to_commercial_reservation(t *testing.T) {
+	rt, err := config.NewRoutingTable(config.DefaultRoutes())
+	if err != nil {
+		t.Fatalf("default table: %v", err)
+	}
+	want := out.Route{Consumer: "commercial-reservation", Path: "/api/v1/commercial-reservation/internal/tenants/{tenantId}/events"}
+	for _, eventType := range []string{"SalidaExecutionStarted", "SalidaFinalized"} {
+		routes, known := rt.RoutesFor(eventType)
+		if !known || len(routes) != 1 || routes[0] != want {
+			t.Errorf("%s: routes=%v known=%v, want %v", eventType, routes, known, want)
+		}
+	}
+}
