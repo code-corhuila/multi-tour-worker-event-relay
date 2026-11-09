@@ -40,6 +40,8 @@ var knownEventTypes = map[string]bool{
 	"PasswordRecoveryRequested":             true,
 	"PasswordReset":                         true,
 	"PasswordResetFailed":                   true,
+	"PlatformExceptionalAccessOpened":       true,
+	"PlatformExceptionalAccessClosed":       true,
 	"SalidaScheduled":                       true,
 	"SalidaRescheduled":                     true,
 	"SalidaVehiclesChanged":                 true,
@@ -105,8 +107,9 @@ func plainAbsolutePath(path string) bool {
 	return !strings.ContainsFunc(path, func(c rune) bool { return unicode.IsSpace(c) || unicode.IsControl(c) })
 }
 
-// DefaultRoutes is the table of this cut. Security receives the tenant events; identity-audit the nine events of the
-// security microservice that the audit records (HU-IDA-002, and the three of the password recovery of HU-SEC-004);
+// DefaultRoutes is the table of this cut. Security receives the tenant events; identity-audit the eleven events of the
+// security microservice that the audit records (HU-IDA-002, the three of the password recovery of HU-SEC-004 and the two of the
+// exceptional access of HU-SEC-007);
 // commercial-reservation the scheduled departure of operations-cost, the new total of its vehicles (HU-OPS-002) and its
 // start and end (HU-OPS-003). The tenant events also reach commercial-reservation (the copy of the status of the tenant), and
 // AccountEmailVerified reaches it (it links the account to the customer of that tenant) and the audit; the 14 events that
@@ -124,18 +127,21 @@ func DefaultRoutes() map[string][]out.Route {
 	notifications := out.Route{Consumer: "notifications", Path: notificationsEventsPath, NoTenantPath: notificationsEventsNoTenantPath}
 	auditAndNotifications := []out.Route{identityAudit[0], notifications}
 	return map[string][]out.Route{
-		"TenantCreated":                    securityAndReservations,
-		"TenantInactivated":                securityAndReservations,
-		"TenantReactivated":                securityAndReservations,
-		"AccountSessionsRevoked":           identityAudit,
-		"AccountBlocked":                   identityAudit,
-		"SpecialPermissionGranted":         identityAudit,
-		"SpecialPermissionRevoked":         identityAudit,
-		"OptionalRoleEnabled":              identityAudit,
-		"OptionalRoleDisabled":             identityAudit,
-		"PasswordRecoveryRequested":        identityAudit,
-		"PasswordReset":                    auditAndNotifications,
-		"PasswordResetFailed":              auditAndNotifications,
+		"TenantCreated":             securityAndReservations,
+		"TenantInactivated":         securityAndReservations,
+		"TenantReactivated":         securityAndReservations,
+		"AccountSessionsRevoked":    identityAudit,
+		"AccountBlocked":            identityAudit,
+		"SpecialPermissionGranted":  identityAudit,
+		"SpecialPermissionRevoked":  identityAudit,
+		"OptionalRoleEnabled":       identityAudit,
+		"OptionalRoleDisabled":      identityAudit,
+		"PasswordRecoveryRequested": identityAudit,
+		"PasswordReset":             auditAndNotifications,
+		"PasswordResetFailed":       auditAndNotifications,
+		// the exceptional access of the Platform Administrator to a tenant: always a tenant, only the audit (relay spec 010)
+		"PlatformExceptionalAccessOpened":  identityAudit,
+		"PlatformExceptionalAccessClosed":  identityAudit,
 		"AccountTemporaryCredentialIssued": nil,
 		// commercial-reservation links the account to the customer of that tenant and the audit records it (relay spec 007).
 		"AccountEmailVerified":   {reservations[0], identityAudit[0]},

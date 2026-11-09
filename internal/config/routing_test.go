@@ -252,6 +252,36 @@ func TestRoutes_the_reset_facts_reach_the_audit_and_notifications(t *testing.T) 
 	}
 }
 
+// HU-SEC-007, relay spec 010: the two facts of the exceptional access of the Platform Administrator to a tenant reach the audit, by the
+// route of that tenant (they always have one) and nobody else.
+var supportAccessFacts = []string{"PlatformExceptionalAccessOpened", "PlatformExceptionalAccessClosed"}
+
+func TestNewRoutingTable_KnowsTheSupportAccessFacts(t *testing.T) {
+	rt, err := config.NewRoutingTable(config.DefaultRoutes())
+	if err != nil {
+		t.Fatalf("default table: %v", err)
+	}
+	for _, eventType := range supportAccessFacts {
+		if _, known := rt.RoutesFor(eventType); !known {
+			t.Errorf("%s is not known to the routing table", eventType)
+		}
+	}
+}
+
+func TestDefaultRoutes_SupportAccessFactsGoToTheAudit(t *testing.T) {
+	rt, err := config.NewRoutingTable(config.DefaultRoutes())
+	if err != nil {
+		t.Fatalf("default table: %v", err)
+	}
+	for _, eventType := range supportAccessFacts {
+		routes, _ := rt.RoutesFor(eventType)
+		if len(routes) != 1 || routes[0].Consumer != "identity-audit" ||
+			routes[0].Path != "/api/v1/identity-audit/internal/tenants/{tenantId}/events" {
+			t.Errorf("%s: routes=%v, want only the route to identity-audit by tenant", eventType, routes)
+		}
+	}
+}
+
 // HU-OPS-002, relay spec 004: the new total of the vehicles of a departure reaches commercial-reservation, which already
 // updates the seats of the departure from it, by the same route as the scheduled departure.
 func TestNewRoutingTable_KnowsTheVehicleChange(t *testing.T) {
