@@ -87,3 +87,17 @@ func TestLoadRelay_refuses_to_start_on_a_bad_value(t *testing.T) {
 		})
 	}
 }
+
+// Relay spec 009, AC-RL-09.3: the address of job 4 is required and is only scheme, host and port.
+func TestLoadRelay_names_the_bad_notifications_url(t *testing.T) {
+	for name, pairs := range map[string][]string{
+		"missing":   {"NOTIFICATIONS_BASE_URL", ""},
+		"with path": {"NOTIFICATIONS_BASE_URL", "http://worker-notifications:8080/pw-9x"},
+		"no scheme": {"NOTIFICATIONS_BASE_URL", "worker-notifications:8080"},
+	} {
+		_, err := config.LoadRelay(env(append(append([]string{}, required...), pairs...)...))
+		if err == nil || !strings.Contains(err.Error(), "NOTIFICATIONS_BASE_URL") {
+			t.Errorf("%s: err = %v, want one naming NOTIFICATIONS_BASE_URL", name, err)
+		}
+	}
+}

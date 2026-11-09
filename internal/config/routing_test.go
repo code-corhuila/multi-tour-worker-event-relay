@@ -234,7 +234,7 @@ func TestDefaultRoutes_PasswordRecoveryFactsOfThePlatformUseTheNoTenantPath(t *t
 
 // HU-WRK-004, relay spec 009: the two facts of a reset that job 4 tells the owner about also reach notifications, by tenant and, for the
 // Platform Administrator, with no tenant; the request for a code is not one of them.
-func TestDefaultRoutes_TheResetFactsAlsoReachNotifications(t *testing.T) {
+func TestRoutes_the_reset_facts_reach_the_audit_and_notifications(t *testing.T) {
 	rt, err := config.NewRoutingTable(config.DefaultRoutes())
 	if err != nil {
 		t.Fatalf("default table: %v", err)
