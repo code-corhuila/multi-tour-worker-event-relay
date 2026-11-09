@@ -55,15 +55,19 @@ func TestC_routing_table_refuses_an_odd_path_without_tenant(t *testing.T) {
 	}
 }
 
-func TestDefaultRoutesAreValidAndSendTenantEventsToSecurity(t *testing.T) {
+// Relay spec 007 (AC-RL-07.1): the tenant events reach security and the copy of the status of the tenant that commercial-reservation keeps.
+func TestDefaultRoutesAreValidAndSendTenantEventsToSecurityAndReservations(t *testing.T) {
 	rt, err := config.NewRoutingTable(config.DefaultRoutes())
 	if err != nil {
 		t.Fatalf("default table: %v", err)
 	}
 	for _, eventType := range []string{"TenantCreated", "TenantInactivated", "TenantReactivated"} {
 		routes, known := rt.RoutesFor(eventType)
-		want := out.Route{Consumer: "security", Path: "/api/v1/security/internal/tenants/{tenantId}/events"}
-		if !known || len(routes) != 1 || routes[0] != want {
+		want := []out.Route{
+			{Consumer: "security", Path: "/api/v1/security/internal/tenants/{tenantId}/events"},
+			{Consumer: "commercial-reservation", Path: "/api/v1/commercial-reservation/internal/tenants/{tenantId}/events"},
+		}
+		if !known || fmt.Sprint(routes) != fmt.Sprint(want) {
 			t.Errorf("%s: routes=%v known=%v, want %v", eventType, routes, known, want)
 		}
 	}
@@ -102,15 +106,47 @@ func TestC_default_routes_send_the_audited_security_events_to_identity_audit(t *
 	}
 }
 
-// RN-WRK7-15: nothing consumes these two yet; they are known, so they are published without delivery and raise no alert.
-func TestC_credential_and_email_events_are_known_and_have_no_consumer(t *testing.T) {
+// RN-WRK7-15: nothing consumes the temporary credential yet; it is known, so it is published without delivery and raises no alert.
+func TestC_the_credential_event_is_known_and_has_no_consumer(t *testing.T) {
 	rt, err := config.NewRoutingTable(config.DefaultRoutes())
 	if err != nil {
 		t.Fatalf("default table: %v", err)
 	}
-	for _, eventType := range []string{"AccountTemporaryCredentialIssued", "AccountEmailVerified"} {
-		if routes, known := rt.RoutesFor(eventType); !known || len(routes) != 0 {
-			t.Errorf("%s: routes=%v known=%v, want known and with no consumer", eventType, routes, known)
+	if routes, known := rt.RoutesFor("AccountTemporaryCredentialIssued"); !known || len(routes) != 0 {
+		t.Errorf("AccountTemporaryCredentialIssued: routes=%v known=%v, want known and with no consumer", routes, known)
+	}
+}
+
+// Relay spec 007 (AC-RL-07.2): a verified account is linked to the customer of its tenant by commercial-reservation and audited.
+func TestC_a_verified_account_reaches_commercial_reservation_and_the_audit(t *testing.T) {
+	rt, err := config.NewRoutingTable(config.DefaultRoutes())
+	if err != nil {
+		t.Fatalf("default table: %v", err)
+	}
+	routes, known := rt.RoutesFor("AccountEmailVerified")
+	if !known || len(routes) != 2 || routes[0].Consumer != "commercial-reservation" || routes[1].Consumer != "identity-audit" {
+		t.Fatalf("AccountEmailVerified: routes=%v known=%v, want commercial-reservation then identity-audit", routes, known)
+	}
+	if routes[0].Path != "/api/v1/commercial-reservation/internal/tenants/{tenantId}/events" ||
+		routes[1].Path != "/api/v1/identity-audit/internal/tenants/{tenantId}/events" {
+		t.Errorf("paths = %q, %q", routes[0].Path, routes[1].Path)
+	}
+}
+
+// Relay spec 007 (AC-RL-07.4): the events that commercial-reservation writes are audited (`domain-events.md`, consumer: Audit).
+func TestC_every_audited_event_of_commercial_reservation_goes_to_identity_audit(t *testing.T) {
+	rt, err := config.NewRoutingTable(config.DefaultRoutes())
+	if err != nil {
+		t.Fatalf("default table: %v", err)
+	}
+	types := []string{"ReservationCreated", "ReservationModified", "CapacityAllocated", "CapacityReleased", "PaymentEvidenceRegistered",
+		"PaymentValidated", "PaymentRejected", "ReservationConfirmed", "ReservationCancelled", "RefundAuthorized", "ClientNotified",
+		"CustomerRegistered", "DiscountRuleChanged", "SensitiveDataAccessed"}
+	for _, eventType := range types {
+		routes, known := rt.RoutesFor(eventType)
+		if !known || len(routes) != 1 || routes[0].Consumer != "identity-audit" ||
+			routes[0].Path != "/api/v1/identity-audit/internal/tenants/{tenantId}/events" {
+			t.Errorf("%s: routes=%v known=%v, want identity-audit on the route of its tenant", eventType, routes, known)
 		}
 	}
 }
