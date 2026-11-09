@@ -18,7 +18,7 @@ func defaultTable(t *testing.T) *config.RoutingTable {
 
 // RN-WRK7-15: an event nobody consumes yet is marked published, so it does not pile up in the outbox, and nothing is sent.
 func TestA_event_with_no_consumer_is_marked_published(t *testing.T) {
-	for _, eventType := range []string{"AccountTemporaryCredentialIssued", "AccountEmailVerified", "SalidaMarkedPendienteDeRegularizacion"} {
+	for _, eventType := range []string{"AccountTemporaryCredentialIssued", "SalidaMarkedPendienteDeRegularizacion"} {
 		src, sink := newSource(event(id1, eventType)), &fakeSink{}
 
 		processed, failed := relay(src, defaultTable(t), sink).Run(context.Background(), 10)
@@ -30,6 +30,23 @@ func TestA_event_with_no_consumer_is_marked_published(t *testing.T) {
 		if len(src.attempts[id1]) != 0 {
 			t.Errorf("%s: attempts=%v, want none: no alert for an event nobody consumes", eventType, src.attempts[id1])
 		}
+	}
+}
+
+// Relay spec 007 (AC-RL-07.2): with the real table a verified account is delivered to commercial-reservation and to the audit, and only then
+// marked published.
+func TestA_a_verified_account_is_delivered_to_both_consumers_before_it_is_marked_published(t *testing.T) {
+	e := event(id1, "AccountEmailVerified")
+	e.TenantID = id2
+	src, sink := newSource(e), &fakeSink{}
+
+	processed, failed := relay(src, defaultTable(t), sink).Run(context.Background(), 10)
+
+	if processed != 1 || failed != 0 || !src.published[id1] {
+		t.Fatalf("processed=%d failed=%d published=%v, want 1, 0 and published", processed, failed, src.published[id1])
+	}
+	if len(sink.to("commercial-reservation")) != 1 || len(sink.to("identity-audit")) != 1 {
+		t.Errorf("deliveries=%v, want one to commercial-reservation and one to identity-audit", sink.deliveries)
 	}
 }
 

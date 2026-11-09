@@ -42,6 +42,21 @@ var knownEventTypes = map[string]bool{
 	"SalidaExecutionStarted":                true,
 	"SalidaFinalized":                       true,
 	"SalidaMarkedPendienteDeRegularizacion": true,
+	// The events that commercial-reservation writes (relay spec 007; the consumer of each one is the audit, domain-events.md).
+	"ReservationCreated":        true,
+	"ReservationModified":       true,
+	"CapacityAllocated":         true,
+	"CapacityReleased":          true,
+	"PaymentEvidenceRegistered": true,
+	"PaymentValidated":          true,
+	"PaymentRejected":           true,
+	"ReservationConfirmed":      true,
+	"ReservationCancelled":      true,
+	"RefundAuthorized":          true,
+	"ClientNotified":            true,
+	"CustomerRegistered":        true,
+	"DiscountRuleChanged":       true,
+	"SensitiveDataAccessed":     true,
 }
 
 // RoutingTable maps each event type to the routes that receive it.
@@ -89,19 +104,23 @@ func plainAbsolutePath(path string) bool {
 // DefaultRoutes is the table of this cut. Security receives the tenant events; identity-audit the nine events of the
 // security microservice that the audit records (HU-IDA-002, and the three of the password recovery of HU-SEC-004);
 // commercial-reservation the scheduled departure of operations-cost, the new total of its vehicles (HU-OPS-002) and its
-// start and end (HU-OPS-003). AccountTemporaryCredentialIssued, SalidaRescheduled and SalidaMarkedPendienteDeRegularizacion have no consumer yet; AccountEmailVerified is accepted by commercial-reservation (HU-COM-005) but is
-// not routed to it yet. The three are marked published without delivery on purpose, so they do not pile up in the outbox.
-// shortcut: spec AC-01.2 (TenantInactivated, TenantReactivated and AccountSessionsRevoked reach every service) is met
-// only in part; add one line per consumer as each service exposes its receiving route (commercial-reservation already
-// accepts the tenant events).
+// start and end (HU-OPS-003). The tenant events also reach commercial-reservation (the copy of the status of the tenant), and
+// AccountEmailVerified reaches it (it links the account to the customer of that tenant) and the audit; the 14 events that
+// commercial-reservation writes reach the audit (relay spec 007). AccountTemporaryCredentialIssued, SalidaRescheduled and
+// SalidaMarkedPendienteDeRegularizacion have no consumer yet and are marked published without delivery on purpose, so they do not
+// pile up in the outbox.
+// shortcut: spec AC-01.2 (the tenant events and AccountSessionsRevoked reach every service) is met only in part: cash-reporting and
+// operations-cost have no receiving route and nothing reaches commercial-reservation about revoked sessions; add one line per
+// consumer as each service exposes its route. cash-reporting has no route to read its outbox either (G-RL7-1).
 func DefaultRoutes() map[string][]out.Route {
 	security := []out.Route{{Consumer: "security", Path: tenantEventsPath}}
 	identityAudit := []out.Route{{Consumer: "identity-audit", Path: auditEventsPath, NoTenantPath: auditEventsNoTenantPath}}
 	reservations := []out.Route{{Consumer: "commercial-reservation", Path: reservationEventsPath}}
+	securityAndReservations := []out.Route{security[0], reservations[0]}
 	return map[string][]out.Route{
-		"TenantCreated":                    security,
-		"TenantInactivated":                security,
-		"TenantReactivated":                security,
+		"TenantCreated":                    securityAndReservations,
+		"TenantInactivated":                securityAndReservations,
+		"TenantReactivated":                securityAndReservations,
 		"AccountSessionsRevoked":           identityAudit,
 		"AccountBlocked":                   identityAudit,
 		"SpecialPermissionGranted":         identityAudit,
@@ -112,17 +131,33 @@ func DefaultRoutes() map[string][]out.Route {
 		"PasswordReset":                    identityAudit,
 		"PasswordResetFailed":              identityAudit,
 		"AccountTemporaryCredentialIssued": nil,
-		"AccountEmailVerified":             nil,
-		"SalidaScheduled":                  reservations,
-		"SalidaVehiclesChanged":            reservations,
-		"SalidaExecutionStarted":           reservations,
-		"SalidaFinalized":                  reservations,
+		// commercial-reservation links the account to the customer of that tenant and the audit records it (relay spec 007).
+		"AccountEmailVerified":   {reservations[0], identityAudit[0]},
+		"SalidaScheduled":        reservations,
+		"SalidaVehiclesChanged":  reservations,
+		"SalidaExecutionStarted": reservations,
+		"SalidaFinalized":        reservations,
 		// Gap G-API-2: commercial-reservation does not accept SalidaRescheduled yet (it would answer 400 and the event would end
 		// FAILED after twenty attempts), so it is published without delivery until it does; then it takes the same route.
 		"SalidaRescheduled": nil,
 		// HU-OPS-003 part B: operations-cost marks a departure past its estimated end; no service accepts the event yet, so it is
 		// published without delivery until one does.
 		"SalidaMarkedPendienteDeRegularizacion": nil,
+		// The events of commercial-reservation reach the audit (relay spec 007, AC-RL-07.4).
+		"ReservationCreated":        identityAudit,
+		"ReservationModified":       identityAudit,
+		"CapacityAllocated":         identityAudit,
+		"CapacityReleased":          identityAudit,
+		"PaymentEvidenceRegistered": identityAudit,
+		"PaymentValidated":          identityAudit,
+		"PaymentRejected":           identityAudit,
+		"ReservationConfirmed":      identityAudit,
+		"ReservationCancelled":      identityAudit,
+		"RefundAuthorized":          identityAudit,
+		"ClientNotified":            identityAudit,
+		"CustomerRegistered":        identityAudit,
+		"DiscountRuleChanged":       identityAudit,
+		"SensitiveDataAccessed":     identityAudit,
 	}
 }
 
