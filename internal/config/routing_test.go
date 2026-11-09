@@ -142,6 +142,18 @@ func TestC_the_rescheduled_departure_is_known_and_has_no_consumer_until_commerci
 	}
 }
 
+// HU-OPS-003 part B, relay spec 006: operations-cost writes the mark of a departure past its estimated end, and no service accepts it
+// yet (commercial-reservation rejects the types it does not name), so it is known and published without delivery.
+func TestC_the_mark_of_a_departure_is_known_and_has_no_consumer_until_a_service_accepts_it(t *testing.T) {
+	rt, err := config.NewRoutingTable(config.DefaultRoutes())
+	if err != nil {
+		t.Fatalf("default table: %v", err)
+	}
+	if routes, known := rt.RoutesFor("SalidaMarkedPendienteDeRegularizacion"); !known || len(routes) != 0 {
+		t.Errorf("SalidaMarkedPendienteDeRegularizacion: routes=%v known=%v, want known and with no consumer", routes, known)
+	}
+}
+
 // HU-SEC-004, relay spec 003: the facts of a password recovery reach the audit, also for the Platform Administrator.
 var passwordRecoveryFacts = []string{"PasswordRecoveryRequested", "PasswordReset", "PasswordResetFailed"}
 

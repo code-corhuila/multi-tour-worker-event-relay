@@ -22,25 +22,26 @@ const (
 // knownEventTypes are the types the publishers write to their outbox in this cut. The names of the events of
 // multi-tour-security other than AccountSessionsRevoked are proposals that are not in 02-domain yet (gap G-02-EVT).
 var knownEventTypes = map[string]bool{
-	"TenantCreated":                    true,
-	"TenantInactivated":                true,
-	"TenantReactivated":                true,
-	"AccountSessionsRevoked":           true,
-	"AccountBlocked":                   true,
-	"SpecialPermissionGranted":         true,
-	"SpecialPermissionRevoked":         true,
-	"OptionalRoleEnabled":              true,
-	"OptionalRoleDisabled":             true,
-	"AccountTemporaryCredentialIssued": true,
-	"AccountEmailVerified":             true,
-	"PasswordRecoveryRequested":        true,
-	"PasswordReset":                    true,
-	"PasswordResetFailed":              true,
-	"SalidaScheduled":                  true,
-	"SalidaRescheduled":                true,
-	"SalidaVehiclesChanged":            true,
-	"SalidaExecutionStarted":           true,
-	"SalidaFinalized":                  true,
+	"TenantCreated":                         true,
+	"TenantInactivated":                     true,
+	"TenantReactivated":                     true,
+	"AccountSessionsRevoked":                true,
+	"AccountBlocked":                        true,
+	"SpecialPermissionGranted":              true,
+	"SpecialPermissionRevoked":              true,
+	"OptionalRoleEnabled":                   true,
+	"OptionalRoleDisabled":                  true,
+	"AccountTemporaryCredentialIssued":      true,
+	"AccountEmailVerified":                  true,
+	"PasswordRecoveryRequested":             true,
+	"PasswordReset":                         true,
+	"PasswordResetFailed":                   true,
+	"SalidaScheduled":                       true,
+	"SalidaRescheduled":                     true,
+	"SalidaVehiclesChanged":                 true,
+	"SalidaExecutionStarted":                true,
+	"SalidaFinalized":                       true,
+	"SalidaMarkedPendienteDeRegularizacion": true,
 }
 
 // RoutingTable maps each event type to the routes that receive it.
@@ -88,7 +89,7 @@ func plainAbsolutePath(path string) bool {
 // DefaultRoutes is the table of this cut. Security receives the tenant events; identity-audit the nine events of the
 // security microservice that the audit records (HU-IDA-002, and the three of the password recovery of HU-SEC-004);
 // commercial-reservation the scheduled departure of operations-cost, the new total of its vehicles (HU-OPS-002) and its
-// start and end (HU-OPS-003). AccountTemporaryCredentialIssued and SalidaRescheduled have no consumer yet; AccountEmailVerified is accepted by commercial-reservation (HU-COM-005) but is
+// start and end (HU-OPS-003). AccountTemporaryCredentialIssued, SalidaRescheduled and SalidaMarkedPendienteDeRegularizacion have no consumer yet; AccountEmailVerified is accepted by commercial-reservation (HU-COM-005) but is
 // not routed to it yet. The three are marked published without delivery on purpose, so they do not pile up in the outbox.
 // shortcut: spec AC-01.2 (TenantInactivated, TenantReactivated and AccountSessionsRevoked reach every service) is met
 // only in part; add one line per consumer as each service exposes its receiving route (commercial-reservation already
@@ -119,6 +120,9 @@ func DefaultRoutes() map[string][]out.Route {
 		// Gap G-API-2: commercial-reservation does not accept SalidaRescheduled yet (it would answer 400 and the event would end
 		// FAILED after twenty attempts), so it is published without delivery until it does; then it takes the same route.
 		"SalidaRescheduled": nil,
+		// HU-OPS-003 part B: operations-cost marks a departure past its estimated end; no service accepts the event yet, so it is
+		// published without delivery until one does.
+		"SalidaMarkedPendienteDeRegularizacion": nil,
 	}
 }
 
