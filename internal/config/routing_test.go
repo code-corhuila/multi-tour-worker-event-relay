@@ -140,7 +140,7 @@ func TestC_every_audited_event_of_commercial_reservation_goes_to_identity_audit(
 		t.Fatalf("default table: %v", err)
 	}
 	types := []string{"ReservationCreated", "ReservationModified", "CapacityAllocated", "CapacityReleased", "PaymentEvidenceRegistered",
-		"PaymentValidated", "PaymentRejected", "ReservationConfirmed", "ReservationCancelled", "RefundAuthorized", "ClientNotified",
+		"PaymentValidated", "PaymentRejected", "ReservationConfirmed", "ReservationCancelled", "RefundAuthorized",
 		"CustomerRegistered", "DiscountRuleChanged", "SensitiveDataAccessed"}
 	for _, eventType := range types {
 		routes, known := rt.RoutesFor(eventType)
@@ -363,5 +363,23 @@ func TestRoutes_the_emergency_notice_does_not_reach_the_audit(t *testing.T) {
 		if routes, _ := rt.RoutesFor(eventType); len(routes) != 1 || routes[0].Consumer != "identity-audit" {
 			t.Errorf("%s: routes=%v, want only the audit", eventType, routes)
 		}
+	}
+}
+
+// HU-COM-015 (DP-15-01, G-E): the notice of a customer is one ClientNotified row. It reaches job 4, which sends the e-mail, and keeps reaching the audit as evidence.
+func TestRoutes_the_client_notice_reaches_notifications_and_the_audit(t *testing.T) {
+	rt, err := config.NewRoutingTable(config.DefaultRoutes())
+	if err != nil {
+		t.Fatalf("default table: %v", err)
+	}
+	routes, known := rt.RoutesFor("ClientNotified")
+	if !known || len(routes) != 2 {
+		t.Fatalf("routes=%v known=%v, want two routes", routes, known)
+	}
+	if routes[0].Consumer != "identity-audit" || routes[0].Path != "/api/v1/identity-audit/internal/tenants/{tenantId}/events" {
+		t.Errorf("first route=%v, want the audit by the route of its tenant", routes[0])
+	}
+	if routes[1].Consumer != "notifications" || routes[1].Path != "/api/v1/notifications/internal/tenants/{tenantId}/events" {
+		t.Errorf("second route=%v, want notifications by the route of its tenant", routes[1])
 	}
 }
