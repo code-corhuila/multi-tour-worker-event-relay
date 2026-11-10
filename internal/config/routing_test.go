@@ -333,3 +333,35 @@ func TestC_default_routes_send_the_start_and_the_end_to_commercial_reservation(t
 		}
 	}
 }
+
+// HU-SEC-007 part C, relay spec 011: the notice of an emergency access reaches notifications by the route of its tenant and does not reach the audit,
+// whose record of the access are the facts it comes with.
+func TestRoutes_the_emergency_notice_reaches_notifications(t *testing.T) {
+	rt, err := config.NewRoutingTable(config.DefaultRoutes())
+	if err != nil {
+		t.Fatalf("default table: %v", err)
+	}
+	routes, known := rt.RoutesFor("EmergencyAccessNoticeRequested")
+	if !known || len(routes) != 1 || routes[0].Consumer != "notifications" || routes[0].Path != "/api/v1/notifications/internal/tenants/{tenantId}/events" {
+		t.Fatalf("routes=%v known=%v, want notifications by the route of the tenant", routes, known)
+	}
+}
+
+func TestRoutes_the_emergency_notice_does_not_reach_the_audit(t *testing.T) {
+	rt, err := config.NewRoutingTable(config.DefaultRoutes())
+	if err != nil {
+		t.Fatalf("default table: %v", err)
+	}
+	routes, _ := rt.RoutesFor("EmergencyAccessNoticeRequested")
+	for _, route := range routes {
+		if route.Consumer == "identity-audit" {
+			t.Errorf("the notice reaches the audit: %v", routes)
+		}
+	}
+	// the facts of the access keep reaching the audit, as before
+	for _, eventType := range []string{"PlatformExceptionalAccessOpened", "PlatformExceptionalAccessClosed"} {
+		if routes, _ := rt.RoutesFor(eventType); len(routes) != 1 || routes[0].Consumer != "identity-audit" {
+			t.Errorf("%s: routes=%v, want only the audit", eventType, routes)
+		}
+	}
+}
