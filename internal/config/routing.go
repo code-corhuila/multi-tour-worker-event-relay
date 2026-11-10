@@ -110,7 +110,8 @@ func plainAbsolutePath(path string) bool {
 
 // DefaultRoutes is the table of this cut. Security receives the tenant events; identity-audit the eleven events of the
 // security microservice that the audit records (HU-IDA-002, the three of the password recovery of HU-SEC-004 and the two of the
-// exceptional access of HU-SEC-007);
+// exceptional access of HU-SEC-007); notifications alone the notice of an emergency access (EmergencyAccessNoticeRequested,
+// relay spec 011), which the audit does not record because it has the facts of the access;
 // commercial-reservation the scheduled departure of operations-cost, the new total of its vehicles (HU-OPS-002) and its
 // start and end (HU-OPS-003). The tenant events also reach commercial-reservation (the copy of the status of the tenant), and
 // AccountEmailVerified reaches it (it links the account to the customer of that tenant) and the audit; the 14 events that
