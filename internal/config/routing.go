@@ -42,6 +42,7 @@ var knownEventTypes = map[string]bool{
 	"PasswordResetFailed":                   true,
 	"PlatformExceptionalAccessOpened":       true,
 	"PlatformExceptionalAccessClosed":       true,
+	"EmergencyAccessNoticeRequested":        true,
 	"SalidaScheduled":                       true,
 	"SalidaRescheduled":                     true,
 	"SalidaVehiclesChanged":                 true,
@@ -140,8 +141,11 @@ func DefaultRoutes() map[string][]out.Route {
 		"PasswordReset":             auditAndNotifications,
 		"PasswordResetFailed":       auditAndNotifications,
 		// the exceptional access of the Platform Administrator to a tenant: always a tenant, only the audit (relay spec 010)
-		"PlatformExceptionalAccessOpened":  identityAudit,
-		"PlatformExceptionalAccessClosed":  identityAudit,
+		"PlatformExceptionalAccessOpened": identityAudit,
+		"PlatformExceptionalAccessClosed": identityAudit,
+		// the notice that an emergency access opened or ended, one per active Tenant Administrator: only job 4, by the route of its tenant; the audit
+		// has the facts of the access (relay spec 011)
+		"EmergencyAccessNoticeRequested":   {notifications},
 		"AccountTemporaryCredentialIssued": nil,
 		// commercial-reservation links the account to the customer of that tenant and the audit records it (relay spec 007).
 		"AccountEmailVerified":   {reservations[0], identityAudit[0]},
