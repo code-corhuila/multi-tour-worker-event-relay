@@ -18,7 +18,7 @@ const (
 	// commercial-reservation keeps the capacity row of each departure and creates it from SalidaScheduled (ADR-004 D4, HU-OPS-001 AC5).
 	reservationEventsPath = "/api/v1/commercial-reservation/internal/tenants/{tenantId}/events"
 
-	// job 4 receives the facts of a reset it tells the owner about (relay spec 009)
+	// job 4 receives the facts of a reset it tells the owner about (relay spec 009) and the notices of the customers (HU-COM-015)
 	notificationsEventsPath         = "/api/v1/notifications/internal/tenants/{tenantId}/events"
 	notificationsEventsNoTenantPath = "/api/v1/notifications/internal/events"
 )
@@ -171,10 +171,11 @@ func DefaultRoutes() map[string][]out.Route {
 		"ReservationConfirmed":      identityAudit,
 		"ReservationCancelled":      identityAudit,
 		"RefundAuthorized":          identityAudit,
-		"ClientNotified":            identityAudit,
-		"CustomerRegistered":        identityAudit,
-		"DiscountRuleChanged":       identityAudit,
-		"SensitiveDataAccessed":     identityAudit,
+		// HU-COM-015 (DP-15-01): the notice of a customer is sent by job 4 and kept by the audit as evidence; its payload holds no personal datum.
+		"ClientNotified":        auditAndNotifications,
+		"CustomerRegistered":    identityAudit,
+		"DiscountRuleChanged":   identityAudit,
+		"SensitiveDataAccessed": identityAudit,
 	}
 }
 
