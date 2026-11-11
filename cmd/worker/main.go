@@ -52,6 +52,7 @@ func run() error {
 	}
 	security, identityAudit := client(cfg.SecurityURL), client(cfg.IdentityAuditURL)
 	operationsCost, commercialReservation := client(cfg.OperationsCostURL), client(cfg.CommercialReservationURL)
+	cashReporting := client(cfg.CashReportingURL)
 	consumers := map[string]*httpclient.Client{
 		"security": security, "identity-audit": identityAudit, "commercial-reservation": commercialReservation,
 		"notifications": client(cfg.NotificationsURL),
@@ -63,6 +64,7 @@ func run() error {
 	}
 	publishers, err := relayhttp.DefaultPublishers(map[string]*httpclient.Client{
 		"identity-audit": identityAudit, "security": security, "operations-cost": operationsCost, "commercial-reservation": commercialReservation,
+		"cash-reporting": cashReporting,
 	})
 	if err != nil {
 		return err
