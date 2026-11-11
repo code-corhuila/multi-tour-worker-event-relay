@@ -254,7 +254,8 @@ func TestRoutes_the_reset_facts_reach_the_audit_and_notifications(t *testing.T) 
 
 // HU-SEC-007, relay spec 010: the two facts of the exceptional access of the Platform Administrator to a tenant reach the audit, by the
 // route of that tenant (they always have one) and nobody else.
-var supportAccessFacts = []string{"PlatformExceptionalAccessOpened", "PlatformExceptionalAccessClosed"}
+// Spec 012 (G-SEC9-1) adds the third: each use of the token of that access, which operations-cost and the services of commercial-reservation and cash-reporting write.
+var supportAccessFacts = []string{"PlatformExceptionalAccessOpened", "PlatformExceptionalAccessClosed", "PlatformExceptionalAccessUsed"}
 
 func TestNewRoutingTable_KnowsTheSupportAccessFacts(t *testing.T) {
 	rt, err := config.NewRoutingTable(config.DefaultRoutes())
@@ -359,7 +360,7 @@ func TestRoutes_the_emergency_notice_does_not_reach_the_audit(t *testing.T) {
 		}
 	}
 	// the facts of the access keep reaching the audit, as before
-	for _, eventType := range []string{"PlatformExceptionalAccessOpened", "PlatformExceptionalAccessClosed"} {
+	for _, eventType := range supportAccessFacts {
 		if routes, _ := rt.RoutesFor(eventType); len(routes) != 1 || routes[0].Consumer != "identity-audit" {
 			t.Errorf("%s: routes=%v, want only the audit", eventType, routes)
 		}
