@@ -3,6 +3,7 @@ package http
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -74,13 +75,21 @@ func (o *Outbox) MarkPublished(ctx context.Context, eventID string) error {
 }
 
 // RecordFailedAttempt gives the owning API a sanitized error; it moves the retry time itself.
-func (o *Outbox) RecordFailedAttempt(ctx context.Context, eventID, message string) error {
+func (o *Outbox) RecordFailedAttempt(ctx context.Context, eventID, message string) (bool, error) {
 	req := httpclient.Request{Method: http.MethodPost, Path: o.eventPath(eventID, "attempts"),
 		Body: map[string]string{"error": message}}
-	if err := o.client.Do(ctx, req, nil); err != nil {
-		return fmt.Errorf("record failed attempt: %w", err)
+	var answer struct {
+		Status string `json:"status"`
 	}
-	return nil
+	err := o.client.Do(ctx, req, &answer)
+	var unusable *httpclient.DecodeError
+	switch {
+	case errors.As(err, &unusable):
+		return false, nil // a 2xx: the owner counted the attempt; only its answer cannot be read
+	case err != nil:
+		return false, fmt.Errorf("record failed attempt: %w", err)
+	}
+	return answer.Status == "FAILED", nil
 }
 
 func (o *Outbox) eventPath(eventID, action string) string {
