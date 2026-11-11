@@ -384,3 +384,18 @@ func TestRoutes_the_client_notice_reaches_notifications_and_the_audit(t *testing
 		t.Errorf("second route=%v, want notifications by the route of its tenant", routes[1])
 	}
 }
+
+// G-RL7-1: the relay reads the outbox of cash-reporting, which writes nine events no service consumes yet (spec 007 leaves them out of scope). They are
+// known and have no consumer, so each one is published without delivery and does not end failed after twenty attempts.
+func TestC_the_events_of_cash_reporting_are_known_and_have_no_consumer(t *testing.T) {
+	rt, err := config.NewRoutingTable(config.DefaultRoutes())
+	if err != nil {
+		t.Fatalf("default table: %v", err)
+	}
+	for _, name := range []string{"CashSessionOpened", "CashSessionClosed", "CashSessionAutoCreated", "CashSessionAutoClosed", "CashSessionReopened",
+		"CashIncomeRecorded", "OperationalPaymentRecorded", "OperationalExpenseRecorded", "RefundExecuted"} {
+		if routes, known := rt.RoutesFor(name); !known || len(routes) != 0 {
+			t.Errorf("%s: routes=%v known=%v, want known and with no consumer", name, routes, known)
+		}
+	}
+}
