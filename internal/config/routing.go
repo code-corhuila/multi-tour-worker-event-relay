@@ -65,6 +65,16 @@ var knownEventTypes = map[string]bool{
 	"CustomerRegistered":        true,
 	"DiscountRuleChanged":       true,
 	"SensitiveDataAccessed":     true,
+	// The nine events that cash-reporting writes (relay spec 007 leaves them out of scope: no service consumes them yet).
+	"CashSessionOpened":          true,
+	"CashSessionClosed":          true,
+	"CashSessionAutoCreated":     true,
+	"CashSessionAutoClosed":      true,
+	"CashSessionReopened":        true,
+	"CashIncomeRecorded":         true,
+	"OperationalPaymentRecorded": true,
+	"OperationalExpenseRecorded": true,
+	"RefundExecuted":             true,
 }
 
 // RoutingTable maps each event type to the routes that receive it.
@@ -163,6 +173,16 @@ func DefaultRoutes() map[string][]out.Route {
 		// HU-OPS-003 part B: operations-cost marks a departure past its estimated end; no service accepts the event yet, so it is
 		// published without delivery until one does.
 		"SalidaMarkedPendienteDeRegularizacion": nil,
+		// cash-reporting: no service consumes its nine events yet, so they are published without delivery until one does.
+		"CashSessionOpened":          nil,
+		"CashSessionClosed":          nil,
+		"CashSessionAutoCreated":     nil,
+		"CashSessionAutoClosed":      nil,
+		"CashSessionReopened":        nil,
+		"CashIncomeRecorded":         nil,
+		"OperationalPaymentRecorded": nil,
+		"OperationalExpenseRecorded": nil,
+		"RefundExecuted":             nil,
 		// The events of commercial-reservation reach the audit (relay spec 007, AC-RL-07.4).
 		"ReservationCreated":        identityAudit,
 		"ReservationModified":       identityAudit,
