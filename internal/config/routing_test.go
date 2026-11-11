@@ -80,7 +80,7 @@ func TestC_default_routes_name_only_the_consumers_the_worker_serves(t *testing.T
 	if err != nil {
 		t.Fatalf("default table: %v", err)
 	}
-	if got, want := fmt.Sprint(rt.Consumers()), "[commercial-reservation identity-audit security]"; got != want {
+	if got, want := fmt.Sprint(rt.Consumers()), "[commercial-reservation identity-audit notifications security]"; got != want {
 		t.Errorf("consumers = %s, want %s", got, want)
 	}
 }
@@ -140,7 +140,7 @@ func TestC_every_audited_event_of_commercial_reservation_goes_to_identity_audit(
 		t.Fatalf("default table: %v", err)
 	}
 	types := []string{"ReservationCreated", "ReservationModified", "CapacityAllocated", "CapacityReleased", "PaymentEvidenceRegistered",
-		"PaymentValidated", "PaymentRejected", "ReservationConfirmed", "ReservationCancelled", "RefundAuthorized", "ClientNotified",
+		"PaymentValidated", "PaymentRejected", "ReservationConfirmed", "ReservationCancelled", "RefundAuthorized",
 		"CustomerRegistered", "DiscountRuleChanged", "SensitiveDataAccessed"}
 	for _, eventType := range types {
 		routes, known := rt.RoutesFor(eventType)
@@ -212,9 +212,9 @@ func TestDefaultRoutes_PasswordRecoveryFactsGoToTheAudit(t *testing.T) {
 	}
 	for _, eventType := range passwordRecoveryFacts {
 		routes, _ := rt.RoutesFor(eventType)
-		if len(routes) != 1 || routes[0].Consumer != "identity-audit" ||
+		if len(routes) == 0 || routes[0].Consumer != "identity-audit" ||
 			routes[0].Path != "/api/v1/identity-audit/internal/tenants/{tenantId}/events" {
-			t.Errorf("%s: routes=%v, want one route to identity-audit by tenant", eventType, routes)
+			t.Errorf("%s: routes=%v, want the first route to identity-audit by tenant", eventType, routes)
 		}
 	}
 }
@@ -226,8 +226,59 @@ func TestDefaultRoutes_PasswordRecoveryFactsOfThePlatformUseTheNoTenantPath(t *t
 	}
 	for _, eventType := range passwordRecoveryFacts {
 		routes, _ := rt.RoutesFor(eventType)
-		if len(routes) != 1 || routes[0].NoTenantPath != "/api/v1/identity-audit/internal/events" {
+		if len(routes) == 0 || routes[0].NoTenantPath != "/api/v1/identity-audit/internal/events" {
 			t.Errorf("%s: routes=%v, want the path without tenant of identity-audit", eventType, routes)
+		}
+	}
+}
+
+// HU-WRK-004, relay spec 009: the two facts of a reset that job 4 tells the owner about also reach notifications, by tenant and, for the
+// Platform Administrator, with no tenant; the request for a code is not one of them.
+func TestRoutes_the_reset_facts_reach_the_audit_and_notifications(t *testing.T) {
+	rt, err := config.NewRoutingTable(config.DefaultRoutes())
+	if err != nil {
+		t.Fatalf("default table: %v", err)
+	}
+	for _, eventType := range []string{"PasswordReset", "PasswordResetFailed"} {
+		routes, _ := rt.RoutesFor(eventType)
+		if len(routes) != 2 || routes[1].Consumer != "notifications" ||
+			routes[1].Path != "/api/v1/notifications/internal/tenants/{tenantId}/events" ||
+			routes[1].NoTenantPath != "/api/v1/notifications/internal/events" {
+			t.Errorf("%s: routes=%v, want the audit and then notifications", eventType, routes)
+		}
+	}
+	if routes, _ := rt.RoutesFor("PasswordRecoveryRequested"); len(routes) != 1 {
+		t.Errorf("PasswordRecoveryRequested: routes=%v, want only the audit", routes)
+	}
+}
+
+// HU-SEC-007, relay spec 010: the two facts of the exceptional access of the Platform Administrator to a tenant reach the audit, by the
+// route of that tenant (they always have one) and nobody else.
+// Spec 012 (G-SEC9-1) adds the third: each use of the token of that access, which operations-cost and the services of commercial-reservation and cash-reporting write.
+var supportAccessFacts = []string{"PlatformExceptionalAccessOpened", "PlatformExceptionalAccessClosed", "PlatformExceptionalAccessUsed"}
+
+func TestNewRoutingTable_KnowsTheSupportAccessFacts(t *testing.T) {
+	rt, err := config.NewRoutingTable(config.DefaultRoutes())
+	if err != nil {
+		t.Fatalf("default table: %v", err)
+	}
+	for _, eventType := range supportAccessFacts {
+		if _, known := rt.RoutesFor(eventType); !known {
+			t.Errorf("%s is not known to the routing table", eventType)
+		}
+	}
+}
+
+func TestDefaultRoutes_SupportAccessFactsGoToTheAudit(t *testing.T) {
+	rt, err := config.NewRoutingTable(config.DefaultRoutes())
+	if err != nil {
+		t.Fatalf("default table: %v", err)
+	}
+	for _, eventType := range supportAccessFacts {
+		routes, _ := rt.RoutesFor(eventType)
+		if len(routes) != 1 || routes[0].Consumer != "identity-audit" ||
+			routes[0].Path != "/api/v1/identity-audit/internal/tenants/{tenantId}/events" {
+			t.Errorf("%s: routes=%v, want only the route to identity-audit by tenant", eventType, routes)
 		}
 	}
 }
@@ -280,6 +331,71 @@ func TestC_default_routes_send_the_start_and_the_end_to_commercial_reservation(t
 		routes, known := rt.RoutesFor(eventType)
 		if !known || len(routes) != 1 || routes[0] != want {
 			t.Errorf("%s: routes=%v known=%v, want %v", eventType, routes, known, want)
+		}
+	}
+}
+
+// HU-SEC-007 part C, relay spec 011: the notice of an emergency access reaches notifications by the route of its tenant and does not reach the audit,
+// whose record of the access are the facts it comes with.
+func TestRoutes_the_emergency_notice_reaches_notifications(t *testing.T) {
+	rt, err := config.NewRoutingTable(config.DefaultRoutes())
+	if err != nil {
+		t.Fatalf("default table: %v", err)
+	}
+	routes, known := rt.RoutesFor("EmergencyAccessNoticeRequested")
+	if !known || len(routes) != 1 || routes[0].Consumer != "notifications" || routes[0].Path != "/api/v1/notifications/internal/tenants/{tenantId}/events" {
+		t.Fatalf("routes=%v known=%v, want notifications by the route of the tenant", routes, known)
+	}
+}
+
+func TestRoutes_the_emergency_notice_does_not_reach_the_audit(t *testing.T) {
+	rt, err := config.NewRoutingTable(config.DefaultRoutes())
+	if err != nil {
+		t.Fatalf("default table: %v", err)
+	}
+	routes, _ := rt.RoutesFor("EmergencyAccessNoticeRequested")
+	for _, route := range routes {
+		if route.Consumer == "identity-audit" {
+			t.Errorf("the notice reaches the audit: %v", routes)
+		}
+	}
+	// the facts of the access keep reaching the audit, as before
+	for _, eventType := range supportAccessFacts {
+		if routes, _ := rt.RoutesFor(eventType); len(routes) != 1 || routes[0].Consumer != "identity-audit" {
+			t.Errorf("%s: routes=%v, want only the audit", eventType, routes)
+		}
+	}
+}
+
+// HU-COM-015 (DP-15-01, G-E): the notice of a customer is one ClientNotified row. It reaches job 4, which sends the e-mail, and keeps reaching the audit as evidence.
+func TestRoutes_the_client_notice_reaches_notifications_and_the_audit(t *testing.T) {
+	rt, err := config.NewRoutingTable(config.DefaultRoutes())
+	if err != nil {
+		t.Fatalf("default table: %v", err)
+	}
+	routes, known := rt.RoutesFor("ClientNotified")
+	if !known || len(routes) != 2 {
+		t.Fatalf("routes=%v known=%v, want two routes", routes, known)
+	}
+	if routes[0].Consumer != "identity-audit" || routes[0].Path != "/api/v1/identity-audit/internal/tenants/{tenantId}/events" {
+		t.Errorf("first route=%v, want the audit by the route of its tenant", routes[0])
+	}
+	if routes[1].Consumer != "notifications" || routes[1].Path != "/api/v1/notifications/internal/tenants/{tenantId}/events" {
+		t.Errorf("second route=%v, want notifications by the route of its tenant", routes[1])
+	}
+}
+
+// G-RL7-1: the relay reads the outbox of cash-reporting, which writes nine events no service consumes yet (spec 007 leaves them out of scope). They are
+// known and have no consumer, so each one is published without delivery and does not end failed after twenty attempts.
+func TestC_the_events_of_cash_reporting_are_known_and_have_no_consumer(t *testing.T) {
+	rt, err := config.NewRoutingTable(config.DefaultRoutes())
+	if err != nil {
+		t.Fatalf("default table: %v", err)
+	}
+	for _, name := range []string{"CashSessionOpened", "CashSessionClosed", "CashSessionAutoCreated", "CashSessionAutoClosed", "CashSessionReopened",
+		"CashIncomeRecorded", "OperationalPaymentRecorded", "OperationalExpenseRecorded", "RefundExecuted"} {
+		if routes, known := rt.RoutesFor(name); !known || len(routes) != 0 {
+			t.Errorf("%s: routes=%v known=%v, want known and with no consumer", name, routes, known)
 		}
 	}
 }

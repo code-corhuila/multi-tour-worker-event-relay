@@ -13,8 +13,11 @@ type Event struct {
 	Version     int
 	TenantID    string
 	AggregateID string
-	Payload     json.RawMessage
-	OccurredAt  time.Time
+	// ActorID and Reason are the ones of the source envelope (ADR-004 D4); empty when the publisher does not expose them.
+	ActorID    string
+	Reason     string
+	Payload    json.RawMessage
+	OccurredAt time.Time
 }
 
 // Route is where one event type goes: a consumer and its internal path.

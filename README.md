@@ -7,7 +7,7 @@ Governance and documentation live in [`multi-tour-docs`](https://github.com/code
 
 ## What it is
 
-Worker job 7 (ADR-004 D3, D10): it reads the outbox of each publishing domain through its internal API and delivers every event to the consumers listed in its routing table. It holds no business rule and exposes only `/health`.
+Worker job 7 (ADR-004 D3, D10): it reads the outbox of each publishing domain through its internal API and delivers every event to the consumers listed in its routing table. It reads five outboxes: `identity-audit`, `security`, `operations-cost`, `commercial-reservation` and `cash-reporting` (which writes `PlatformExceptionalAccessUsed`, routed to the audit by event type). The tenant events reach `security` and `commercial-reservation`; `AccountEmailVerified` reaches `commercial-reservation` (it links the account to the customer of that tenant) and the audit; and the 14 events that `commercial-reservation` writes reach the audit (relay spec 007). What is not routed yet: `AccountSessionsRevoked` towards the domains, and the tenant events towards `cash-reporting` and `operations-cost`, because none of them has a receiving route. It holds no business rule and exposes only `/health`.
 
 ## The service token
 
@@ -42,6 +42,8 @@ Variables (all read at start; a missing or malformed one stops the worker):
 | `IDENTITY_AUDIT_BASE_URL` | none, required (e.g. `http://identity-audit-api:8082`; compose also requires it) | Internal base URL of `multi-tour-identity-audit-api` (publisher) |
 | `OPERATIONS_COST_BASE_URL` | none, required (e.g. `http://operations-cost-api:8084`; compose also requires it) | Internal base URL of `multi-tour-operations-cost-api` (publisher: its scheduled and rescheduled departures) |
 | `COMMERCIAL_RESERVATION_BASE_URL` | none, required (e.g. `http://commercial-reservation-api:8083`; compose also requires it) | Internal base URL of `multi-tour-commercial-reservation-api` (consumer of `SalidaScheduled`, `SalidaVehiclesChanged`, `SalidaExecutionStarted` and `SalidaFinalized`) |
+| `CASH_REPORTING_BASE_URL` | none, required (e.g. `http://cash-reporting-api:8085`; compose also requires it) | Internal base URL of `multi-tour-cash-reporting-api`, whose outbox is read at `/api/v1/cash-reporting/internal/outbox` |
+| `NOTIFICATIONS_BASE_URL` | none, required (e.g. `http://worker-notifications:8080`; compose also requires it) | Internal base URL of `multi-tour-worker-notifications` (consumer of `PasswordReset` and `PasswordResetFailed`, which it tells the owner of an administrative account about, and of `EmergencyAccessNoticeRequested`, the notice to each active Tenant Administrator that an emergency access opened or ended) |
 | `RELAY_INTERVAL` | `5s` | Time between two runs |
 | `BATCH_SIZE` | `100` | Events handled at most per run |
 | `RUN_TIMEOUT` | `30s` | Time limit of one run |

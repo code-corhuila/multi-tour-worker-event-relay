@@ -23,18 +23,20 @@ type envelope struct {
 	Version     int             `json:"eventVersion"`
 	TenantID    string          `json:"tenantId,omitempty"`
 	AggregateID string          `json:"aggregateId"`
+	ActorID     string          `json:"actorId,omitempty"`
+	Reason      string          `json:"reason,omitempty"`
 	Payload     json.RawMessage `json:"payload"`
 	OccurredAt  time.Time       `json:"occurredAt"`
 }
 
 func (e envelope) event() out.Event {
 	return out.Event{ID: e.ID, Type: e.Type, Version: e.Version, TenantID: e.TenantID,
-		AggregateID: e.AggregateID, Payload: e.Payload, OccurredAt: e.OccurredAt}
+		AggregateID: e.AggregateID, ActorID: e.ActorID, Reason: e.Reason, Payload: e.Payload, OccurredAt: e.OccurredAt}
 }
 
 func envelopeOf(e out.Event) envelope {
 	return envelope{ID: e.ID, Type: e.Type, Version: e.Version, TenantID: e.TenantID,
-		AggregateID: e.AggregateID, Payload: e.Payload, OccurredAt: e.OccurredAt}
+		AggregateID: e.AggregateID, ActorID: e.ActorID, Reason: e.Reason, Payload: e.Payload, OccurredAt: e.OccurredAt}
 }
 
 // Outbox reads and updates one publisher's outbox through its internal routes.

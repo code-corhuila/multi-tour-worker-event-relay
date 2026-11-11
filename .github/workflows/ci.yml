@@ -36,6 +36,7 @@ jobs:
           IDENTITY_AUDIT_BASE_URL: http://identity-audit-api:8082
           OPERATIONS_COST_BASE_URL: http://operations-cost-api:8084
           COMMERCIAL_RESERVATION_BASE_URL: http://commercial-reservation-api:8083
+          CASH_REPORTING_BASE_URL: http://cash-reporting-api:8085
       # Catches a base image tag that does not exist; nothing is pushed
       - name: docker build
         run: docker build -f deploy/Dockerfile .
