@@ -8,9 +8,9 @@ import (
 	"github.com/code-corhuila/multi-tour-worker-event-relay/internal/application/usecase"
 )
 
-// publisherNames are the services whose outbox the relay reads, in the order it reads them (relay spec 007 adds commercial-reservation).
+// publisherNames are the services whose outbox the relay reads, in the order it reads them (relay spec 007 adds commercial-reservation; G-RL7-1 adds cash-reporting).
 // Each outbox is at /api/v1/<service>/internal/outbox, the three routes every publisher offers (ADR-004 D4).
-var publisherNames = []string{"identity-audit", "security", "operations-cost", "commercial-reservation"}
+var publisherNames = []string{"identity-audit", "security", "operations-cost", "commercial-reservation", "cash-reporting"}
 
 // DefaultPublishers builds the outboxes to read, one per service, over the client of each. A service without a client stops the worker at
 // start, so a forgotten line is found there and not at the first run.

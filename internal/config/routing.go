@@ -121,7 +121,7 @@ func plainAbsolutePath(path string) bool {
 // pile up in the outbox.
 // shortcut: spec AC-01.2 (the tenant events and AccountSessionsRevoked reach every service) is met only in part: cash-reporting and
 // operations-cost have no receiving route and nothing reaches commercial-reservation about revoked sessions; add one line per
-// consumer as each service exposes its route. cash-reporting has no route to read its outbox either (G-RL7-1).
+// consumer as each service exposes its route. The relay reads the outbox of cash-reporting (G-RL7-1); its PlatformExceptionalAccessUsed reaches the audit by event type.
 func DefaultRoutes() map[string][]out.Route {
 	security := []out.Route{{Consumer: "security", Path: tenantEventsPath}}
 	identityAudit := []out.Route{{Consumer: "identity-audit", Path: auditEventsPath, NoTenantPath: auditEventsNoTenantPath}}
