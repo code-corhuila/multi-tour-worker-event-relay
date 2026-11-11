@@ -10,11 +10,11 @@ import (
 	relayhttp "github.com/code-corhuila/multi-tour-worker-event-relay/internal/adapter/out/http"
 )
 
-// Relay spec 007 (AC-RL-07.3): the outbox of commercial-reservation is read as a fourth publisher, next to the other three.
-func TestDefaultPublishers_read_the_four_outboxes_each_by_its_own_route(t *testing.T) {
+// Relay spec 007 (AC-RL-07.3): the outbox of commercial-reservation is read and the one of cash-reporting (G-RL7-1) are read as publishers, next to the other three.
+func TestDefaultPublishers_read_the_five_outboxes_each_by_its_own_route(t *testing.T) {
 	paths := map[string]string{}
 	clients := map[string]*httpclient.Client{}
-	for _, name := range []string{"identity-audit", "security", "operations-cost", "commercial-reservation"} {
+	for _, name := range []string{"identity-audit", "security", "operations-cost", "commercial-reservation", "cash-reporting"} {
 		name := name
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			paths[name] = r.URL.Path
@@ -37,10 +37,10 @@ func TestDefaultPublishers_read_the_four_outboxes_each_by_its_own_route(t *testi
 			t.Errorf("%s: %v", p.Name, err)
 		}
 	}
-	if got, want := len(names), 4; got != want {
-		t.Fatalf("publishers = %v, want the four outboxes", names)
+	if got, want := len(names), 5; got != want {
+		t.Fatalf("publishers = %v, want the five outboxes", names)
 	}
-	for _, name := range []string{"identity-audit", "security", "operations-cost", "commercial-reservation"} {
+	for _, name := range []string{"identity-audit", "security", "operations-cost", "commercial-reservation", "cash-reporting"} {
 		if want := "/api/v1/" + name + "/internal/outbox"; paths[name] != want {
 			t.Errorf("%s was read at %q, want %q", name, paths[name], want)
 		}
