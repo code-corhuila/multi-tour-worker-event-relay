@@ -22,6 +22,8 @@ var required = []string{
 	"IDENTITY_AUDIT_BASE_URL", "http://identity-audit-api:8080/",
 	"OPERATIONS_COST_BASE_URL", "http://operations-cost-api:8084",
 	"COMMERCIAL_RESERVATION_BASE_URL", "http://commercial-reservation-api:8083/",
+	"NOTIFICATIONS_BASE_URL", "http://worker-notifications:8080/",
+	"CASH_REPORTING_BASE_URL", "http://cash-reporting-api:8085/",
 }
 
 func TestLoadRelay_applies_the_declared_defaults(t *testing.T) {
@@ -35,6 +37,12 @@ func TestLoadRelay_applies_the_declared_defaults(t *testing.T) {
 	}
 	if got.SecurityURL != "http://security:8080" || got.IdentityAuditURL != "http://identity-audit-api:8080" {
 		t.Errorf("urls = %q, %q", got.SecurityURL, got.IdentityAuditURL)
+	}
+	if got.NotificationsURL != "http://worker-notifications:8080" {
+		t.Errorf("notifications url = %q", got.NotificationsURL)
+	}
+	if got.CashReportingURL != "http://cash-reporting-api:8085" {
+		t.Errorf("cash-reporting url = %q", got.CashReportingURL)
 	}
 	if got.OperationsCostURL != "http://operations-cost-api:8084" || got.CommercialReservationURL != "http://commercial-reservation-api:8083" {
 		t.Errorf("urls = %q, %q", got.OperationsCostURL, got.CommercialReservationURL)
@@ -58,6 +66,10 @@ func TestLoadRelay_refuses_to_start_on_a_bad_value(t *testing.T) {
 		"missing identity-audit url":         {"SERVICE_TOKEN", "t", "SECURITY_BASE_URL", "http://a:1", "OPERATIONS_COST_BASE_URL", "http://c:1", "COMMERCIAL_RESERVATION_BASE_URL", "http://d:1"},
 		"missing operations-cost url":        {"SERVICE_TOKEN", "t", "SECURITY_BASE_URL", "http://a:1", "IDENTITY_AUDIT_BASE_URL", "http://b:1", "COMMERCIAL_RESERVATION_BASE_URL", "http://d:1"},
 		"missing commercial-reservation url": {"SERVICE_TOKEN", "t", "SECURITY_BASE_URL", "http://a:1", "IDENTITY_AUDIT_BASE_URL", "http://b:1", "OPERATIONS_COST_BASE_URL", "http://c:1"},
+		"missing cash-reporting url":         {"SERVICE_TOKEN", "t", "SECURITY_BASE_URL", "http://a:1", "IDENTITY_AUDIT_BASE_URL", "http://b:1", "OPERATIONS_COST_BASE_URL", "http://c:1", "COMMERCIAL_RESERVATION_BASE_URL", "http://d:1", "NOTIFICATIONS_BASE_URL", "http://e:1"},
+		"cash-reporting url with a path":     append(append([]string{}, required...), "CASH_REPORTING_BASE_URL", "http://cash-reporting-api:8085/pw-9x"),
+		"missing notifications url":          {"SERVICE_TOKEN", "t", "SECURITY_BASE_URL", "http://a:1", "IDENTITY_AUDIT_BASE_URL", "http://b:1", "OPERATIONS_COST_BASE_URL", "http://c:1", "COMMERCIAL_RESERVATION_BASE_URL", "http://d:1"},
+		"notifications url with a path":      append(append([]string{}, required...), "NOTIFICATIONS_BASE_URL", "http://worker-notifications:8080/pw-9x"),
 		"operations-cost url with a path":    append(append([]string{}, required...), "OPERATIONS_COST_BASE_URL", "http://operations-cost-api:8084/pw-9x"),
 		"url without scheme":                 append(append([]string{}, required...), "SECURITY_BASE_URL", "security:8080"),
 		"missing token":                      {"SECURITY_BASE_URL", "http://a:1", "IDENTITY_AUDIT_BASE_URL", "http://b:1", "OPERATIONS_COST_BASE_URL", "http://c:1", "COMMERCIAL_RESERVATION_BASE_URL", "http://d:1"},
@@ -79,5 +91,19 @@ func TestLoadRelay_refuses_to_start_on_a_bad_value(t *testing.T) {
 				t.Errorf("error leaks a value: %v", err)
 			}
 		})
+	}
+}
+
+// Relay spec 009, AC-RL-09.3: the address of job 4 is required and is only scheme, host and port.
+func TestLoadRelay_names_the_bad_notifications_url(t *testing.T) {
+	for name, pairs := range map[string][]string{
+		"missing":   {"NOTIFICATIONS_BASE_URL", ""},
+		"with path": {"NOTIFICATIONS_BASE_URL", "http://worker-notifications:8080/pw-9x"},
+		"no scheme": {"NOTIFICATIONS_BASE_URL", "worker-notifications:8080"},
+	} {
+		_, err := config.LoadRelay(env(append(append([]string{}, required...), pairs...)...))
+		if err == nil || !strings.Contains(err.Error(), "NOTIFICATIONS_BASE_URL") {
+			t.Errorf("%s: err = %v, want one naming NOTIFICATIONS_BASE_URL", name, err)
+		}
 	}
 }

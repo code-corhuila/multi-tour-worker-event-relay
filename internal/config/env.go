@@ -23,6 +23,10 @@ type Relay struct {
 	// where those events are delivered (ADR-004 D4).
 	OperationsCostURL        string
 	CommercialReservationURL string
+	// CashReportingURL is where the outbox of cash-reporting is read (PlatformExceptionalAccessUsed, G-RL7-1).
+	CashReportingURL string
+	// NotificationsURL is where the password reset facts are delivered to job 4 (relay spec 009).
+	NotificationsURL string
 }
 
 // LoadRelay reads the variables through getenv. Anything missing or malformed stops the worker at
@@ -51,6 +55,12 @@ func LoadRelay(getenv func(string) string) (Relay, error) {
 		return Relay{}, err
 	}
 	if r.CommercialReservationURL, err = baseURL(getenv, "COMMERCIAL_RESERVATION_BASE_URL"); err != nil {
+		return Relay{}, err
+	}
+	if r.CashReportingURL, err = baseURL(getenv, "CASH_REPORTING_BASE_URL"); err != nil {
+		return Relay{}, err
+	}
+	if r.NotificationsURL, err = baseURL(getenv, "NOTIFICATIONS_BASE_URL"); err != nil {
 		return Relay{}, err
 	}
 	return r, nil

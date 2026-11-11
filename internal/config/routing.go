@@ -17,6 +17,10 @@ const (
 	auditEventsNoTenantPath = "/api/v1/identity-audit/internal/events"
 	// commercial-reservation keeps the capacity row of each departure and creates it from SalidaScheduled (ADR-004 D4, HU-OPS-001 AC5).
 	reservationEventsPath = "/api/v1/commercial-reservation/internal/tenants/{tenantId}/events"
+
+	// job 4 receives the facts of a reset it tells the owner about (relay spec 009) and the notices of the customers (HU-COM-015)
+	notificationsEventsPath         = "/api/v1/notifications/internal/tenants/{tenantId}/events"
+	notificationsEventsNoTenantPath = "/api/v1/notifications/internal/events"
 )
 
 // knownEventTypes are the types the publishers write to their outbox in this cut. The names of the events of
@@ -36,6 +40,10 @@ var knownEventTypes = map[string]bool{
 	"PasswordRecoveryRequested":             true,
 	"PasswordReset":                         true,
 	"PasswordResetFailed":                   true,
+	"PlatformExceptionalAccessOpened":       true,
+	"PlatformExceptionalAccessClosed":       true,
+	"PlatformExceptionalAccessUsed":         true,
+	"EmergencyAccessNoticeRequested":        true,
 	"SalidaScheduled":                       true,
 	"SalidaRescheduled":                     true,
 	"SalidaVehiclesChanged":                 true,
@@ -57,6 +65,16 @@ var knownEventTypes = map[string]bool{
 	"CustomerRegistered":        true,
 	"DiscountRuleChanged":       true,
 	"SensitiveDataAccessed":     true,
+	// The nine events that cash-reporting writes (relay spec 007 leaves them out of scope: no service consumes them yet).
+	"CashSessionOpened":          true,
+	"CashSessionClosed":          true,
+	"CashSessionAutoCreated":     true,
+	"CashSessionAutoClosed":      true,
+	"CashSessionReopened":        true,
+	"CashIncomeRecorded":         true,
+	"OperationalPaymentRecorded": true,
+	"OperationalExpenseRecorded": true,
+	"RefundExecuted":             true,
 }
 
 // RoutingTable maps each event type to the routes that receive it.
@@ -101,8 +119,10 @@ func plainAbsolutePath(path string) bool {
 	return !strings.ContainsFunc(path, func(c rune) bool { return unicode.IsSpace(c) || unicode.IsControl(c) })
 }
 
-// DefaultRoutes is the table of this cut. Security receives the tenant events; identity-audit the nine events of the
-// security microservice that the audit records (HU-IDA-002, and the three of the password recovery of HU-SEC-004);
+// DefaultRoutes is the table of this cut. Security receives the tenant events; identity-audit the eleven events of the
+// security microservice that the audit records (HU-IDA-002, the three of the password recovery of HU-SEC-004 and the two of the
+// exceptional access of HU-SEC-007); notifications alone the notice of an emergency access (EmergencyAccessNoticeRequested,
+// relay spec 011), which the audit does not record because it has the facts of the access;
 // commercial-reservation the scheduled departure of operations-cost, the new total of its vehicles (HU-OPS-002) and its
 // start and end (HU-OPS-003). The tenant events also reach commercial-reservation (the copy of the status of the tenant), and
 // AccountEmailVerified reaches it (it links the account to the customer of that tenant) and the audit; the 14 events that
@@ -111,25 +131,35 @@ func plainAbsolutePath(path string) bool {
 // pile up in the outbox.
 // shortcut: spec AC-01.2 (the tenant events and AccountSessionsRevoked reach every service) is met only in part: cash-reporting and
 // operations-cost have no receiving route and nothing reaches commercial-reservation about revoked sessions; add one line per
-// consumer as each service exposes its route. cash-reporting has no route to read its outbox either (G-RL7-1).
+// consumer as each service exposes its route. The relay reads the outbox of cash-reporting (G-RL7-1); its PlatformExceptionalAccessUsed reaches the audit by event type.
 func DefaultRoutes() map[string][]out.Route {
 	security := []out.Route{{Consumer: "security", Path: tenantEventsPath}}
 	identityAudit := []out.Route{{Consumer: "identity-audit", Path: auditEventsPath, NoTenantPath: auditEventsNoTenantPath}}
 	reservations := []out.Route{{Consumer: "commercial-reservation", Path: reservationEventsPath}}
 	securityAndReservations := []out.Route{security[0], reservations[0]}
+	notifications := out.Route{Consumer: "notifications", Path: notificationsEventsPath, NoTenantPath: notificationsEventsNoTenantPath}
+	auditAndNotifications := []out.Route{identityAudit[0], notifications}
 	return map[string][]out.Route{
-		"TenantCreated":                    securityAndReservations,
-		"TenantInactivated":                securityAndReservations,
-		"TenantReactivated":                securityAndReservations,
-		"AccountSessionsRevoked":           identityAudit,
-		"AccountBlocked":                   identityAudit,
-		"SpecialPermissionGranted":         identityAudit,
-		"SpecialPermissionRevoked":         identityAudit,
-		"OptionalRoleEnabled":              identityAudit,
-		"OptionalRoleDisabled":             identityAudit,
-		"PasswordRecoveryRequested":        identityAudit,
-		"PasswordReset":                    identityAudit,
-		"PasswordResetFailed":              identityAudit,
+		"TenantCreated":             securityAndReservations,
+		"TenantInactivated":         securityAndReservations,
+		"TenantReactivated":         securityAndReservations,
+		"AccountSessionsRevoked":    identityAudit,
+		"AccountBlocked":            identityAudit,
+		"SpecialPermissionGranted":  identityAudit,
+		"SpecialPermissionRevoked":  identityAudit,
+		"OptionalRoleEnabled":       identityAudit,
+		"OptionalRoleDisabled":      identityAudit,
+		"PasswordRecoveryRequested": identityAudit,
+		"PasswordReset":             auditAndNotifications,
+		"PasswordResetFailed":       auditAndNotifications,
+		// the exceptional access of the Platform Administrator to a tenant: always a tenant, only the audit (relay spec 010)
+		"PlatformExceptionalAccessOpened": identityAudit,
+		"PlatformExceptionalAccessClosed": identityAudit,
+		// each use of the token of that access, written by the service that served the read (spec 012, G-SEC9-1): always a tenant, only the audit
+		"PlatformExceptionalAccessUsed": identityAudit,
+		// the notice that an emergency access opened or ended, one per active Tenant Administrator: only job 4, by the route of its tenant; the audit
+		// has the facts of the access (relay spec 011)
+		"EmergencyAccessNoticeRequested":   {notifications},
 		"AccountTemporaryCredentialIssued": nil,
 		// commercial-reservation links the account to the customer of that tenant and the audit records it (relay spec 007).
 		"AccountEmailVerified":   {reservations[0], identityAudit[0]},
@@ -143,6 +173,16 @@ func DefaultRoutes() map[string][]out.Route {
 		// HU-OPS-003 part B: operations-cost marks a departure past its estimated end; no service accepts the event yet, so it is
 		// published without delivery until one does.
 		"SalidaMarkedPendienteDeRegularizacion": nil,
+		// cash-reporting: no service consumes its nine events yet, so they are published without delivery until one does.
+		"CashSessionOpened":          nil,
+		"CashSessionClosed":          nil,
+		"CashSessionAutoCreated":     nil,
+		"CashSessionAutoClosed":      nil,
+		"CashSessionReopened":        nil,
+		"CashIncomeRecorded":         nil,
+		"OperationalPaymentRecorded": nil,
+		"OperationalExpenseRecorded": nil,
+		"RefundExecuted":             nil,
 		// The events of commercial-reservation reach the audit (relay spec 007, AC-RL-07.4).
 		"ReservationCreated":        identityAudit,
 		"ReservationModified":       identityAudit,
@@ -154,10 +194,11 @@ func DefaultRoutes() map[string][]out.Route {
 		"ReservationConfirmed":      identityAudit,
 		"ReservationCancelled":      identityAudit,
 		"RefundAuthorized":          identityAudit,
-		"ClientNotified":            identityAudit,
-		"CustomerRegistered":        identityAudit,
-		"DiscountRuleChanged":       identityAudit,
-		"SensitiveDataAccessed":     identityAudit,
+		// HU-COM-015 (DP-15-01): the notice of a customer is sent by job 4 and kept by the audit as evidence; its payload holds no personal datum.
+		"ClientNotified":        auditAndNotifications,
+		"CustomerRegistered":    identityAudit,
+		"DiscountRuleChanged":   identityAudit,
+		"SensitiveDataAccessed": identityAudit,
 	}
 }
 
