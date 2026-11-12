@@ -18,7 +18,7 @@ func defaultTable(t *testing.T) *config.RoutingTable {
 
 // RN-WRK7-15: an event nobody consumes yet is marked published, so it does not pile up in the outbox, and nothing is sent.
 func TestA_event_with_no_consumer_is_marked_published(t *testing.T) {
-	for _, eventType := range []string{"AccountTemporaryCredentialIssued", "SalidaMarkedPendienteDeRegularizacion"} {
+	for _, eventType := range []string{"AccountTemporaryCredentialIssued", "SalidaRescheduled"} {
 		src, sink := newSource(event(id1, eventType)), &fakeSink{}
 
 		processed, failed := relay(src, defaultTable(t), sink).Run(context.Background(), 10)
