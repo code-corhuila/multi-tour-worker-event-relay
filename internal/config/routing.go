@@ -144,9 +144,9 @@ func DefaultRoutes() map[string][]out.Route {
 		"TenantCreated":     securityAndReservations,
 		"TenantInactivated": securityAndReservations,
 		"TenantReactivated": securityAndReservations,
-		// HU-IDA-004: the zone or the country of a tenant changed. security and commercial-reservation answer 400 to a tenant event type they do
-		// not know, so it is published without delivery until each one accepts it (gap G-IDA4-2); the audit record is written with the change itself.
-		"TenantLocalizationChanged": nil,
+		// HU-IDA-004: the zone or the country of a tenant changed. commercial-reservation consumes it (it keeps them in its copy of the tenant);
+		// security answers 400 to a tenant event type it does not know, so it gets none; the audit record is written with the change.
+		"TenantLocalizationChanged": reservations,
 		"AccountSessionsRevoked":    identityAudit,
 		"AccountBlocked":            identityAudit,
 		"SpecialPermissionGranted":  identityAudit,
