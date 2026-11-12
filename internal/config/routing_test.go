@@ -448,3 +448,13 @@ func TestC_the_events_of_commercial_reservation_with_no_consumer_are_known_and_p
 		}
 	}
 }
+
+// Relay spec 012, AC-RL-12.2: operations-cost writes these three; an unknown type would stop the worker at start.
+func TestC_the_events_of_operations_cost_are_known(t *testing.T) {
+	route := out.Route{Consumer: "identity-audit", Path: "/internal/tenants/{tenantId}/events"}
+	for _, eventType := range []string{"SalidaCancelled", "OperationalCostRecorded", "ExtraordinaryCancellationRecorded"} {
+		if _, err := config.NewRoutingTable(map[string][]out.Route{eventType: {route}}); err != nil {
+			t.Errorf("%s is not a known event type: %v", eventType, err)
+		}
+	}
+}
