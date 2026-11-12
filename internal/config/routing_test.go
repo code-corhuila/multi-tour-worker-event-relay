@@ -417,3 +417,34 @@ func TestDefaultRoutes_TenantLocalizationChangedGoesToCommercialReservationOnly(
 		t.Errorf("TenantLocalizationChanged: routes=%v known=%v, want only %v", routes, known, want)
 	}
 }
+
+// The events that commercial-reservation writes since the catalog, credit, retention and reschedule stories (event-catalog.md, outbox_event CHECK of the -db):
+// the ones the catalog sends to identity-audit reach it, by the route of their tenant.
+func TestC_the_catalog_credit_and_reschedule_events_of_commercial_reservation_go_to_identity_audit(t *testing.T) {
+	rt, err := config.NewRoutingTable(config.DefaultRoutes())
+	if err != nil {
+		t.Fatalf("default table: %v", err)
+	}
+	for _, eventType := range []string{"CatalogServiceInactivated", "CatalogServiceReactivated", "EstablishmentAssociationReactivated",
+		"CreditBalanceRecorded", "CreditBalanceApplied", "ReservationRescheduled"} {
+		routes, known := rt.RoutesFor(eventType)
+		if !known || len(routes) != 1 || routes[0].Consumer != "identity-audit" ||
+			routes[0].Path != "/api/v1/identity-audit/internal/tenants/{tenantId}/events" {
+			t.Errorf("%s: routes=%v known=%v, want identity-audit on the route of its tenant", eventType, routes, known)
+		}
+	}
+}
+
+// event-catalog.md: the publication and the inactivation of an association are used only inside commercial-reservation, and SensitiveDataDeleted is not in
+// the catalog yet (HU-COM-019 DP-06). They are known and have no consumer, so each one is published without delivery and does not end FAILED.
+func TestC_the_events_of_commercial_reservation_with_no_consumer_are_known_and_published_without_delivery(t *testing.T) {
+	rt, err := config.NewRoutingTable(config.DefaultRoutes())
+	if err != nil {
+		t.Fatalf("default table: %v", err)
+	}
+	for _, name := range []string{"EstablishmentAssociationPublished", "EstablishmentAssociationInactivated", "SensitiveDataDeleted"} {
+		if routes, known := rt.RoutesFor(name); !known || len(routes) != 0 {
+			t.Errorf("%s: routes=%v known=%v, want known and with no consumer", name, routes, known)
+		}
+	}
+}
