@@ -51,6 +51,10 @@ var knownEventTypes = map[string]bool{
 	"SalidaExecutionStarted":                true,
 	"SalidaFinalized":                       true,
 	"SalidaMarkedPendienteDeRegularizacion": true,
+	// Relay spec 012: known so the worker starts when operations-cost writes them (SalidaCancelled comes with HU-OPS-006).
+	"SalidaCancelled":                   true,
+	"OperationalCostRecorded":           true,
+	"ExtraordinaryCancellationRecorded": true,
 	// The events that commercial-reservation writes (relay spec 007; the consumer of each one is the audit, domain-events.md).
 	"ReservationCreated":        true,
 	"ReservationModified":       true,
