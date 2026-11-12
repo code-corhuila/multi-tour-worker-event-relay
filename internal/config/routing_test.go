@@ -2,6 +2,8 @@ package config_test
 
 import (
 	"fmt"
+	"sort"
+	"strings"
 	"testing"
 
 	"github.com/code-corhuila/multi-tour-worker-event-relay/internal/application/port/out"
@@ -80,7 +82,7 @@ func TestC_default_routes_name_only_the_consumers_the_worker_serves(t *testing.T
 	if err != nil {
 		t.Fatalf("default table: %v", err)
 	}
-	if got, want := fmt.Sprint(rt.Consumers()), "[commercial-reservation identity-audit notifications security]"; got != want {
+	if got, want := fmt.Sprint(rt.Consumers()), "[cash-reporting commercial-reservation identity-audit notifications security]"; got != want {
 		t.Errorf("consumers = %s, want %s", got, want)
 	}
 }
@@ -139,8 +141,9 @@ func TestC_every_audited_event_of_commercial_reservation_goes_to_identity_audit(
 	if err != nil {
 		t.Fatalf("default table: %v", err)
 	}
-	types := []string{"ReservationCreated", "ReservationModified", "CapacityAllocated", "CapacityReleased", "PaymentEvidenceRegistered",
-		"PaymentValidated", "PaymentRejected", "ReservationConfirmed", "ReservationCancelled", "RefundAuthorized",
+	// the four reservation facts also reach cash-reporting (spec 012): they are in the table test below
+	types := []string{"CapacityAllocated", "CapacityReleased", "PaymentEvidenceRegistered",
+		"PaymentValidated", "PaymentRejected", "RefundAuthorized",
 		"CustomerRegistered", "DiscountRuleChanged", "SensitiveDataAccessed"}
 	for _, eventType := range types {
 		routes, known := rt.RoutesFor(eventType)
@@ -158,10 +161,9 @@ func TestC_default_routes_send_the_scheduled_departure_to_commercial_reservation
 	if err != nil {
 		t.Fatalf("default table: %v", err)
 	}
-	want := out.Route{Consumer: "commercial-reservation", Path: "/api/v1/commercial-reservation/internal/tenants/{tenantId}/events"}
 	routes, known := rt.RoutesFor("SalidaScheduled")
-	if !known || len(routes) != 1 || routes[0] != want {
-		t.Errorf("SalidaScheduled: routes=%v known=%v, want %v", routes, known, want)
+	if !known || consumerNames(routes) != "identity-audit commercial-reservation cash-reporting" {
+		t.Errorf("SalidaScheduled: routes=%v known=%v, want the audit, commercial-reservation and cash-reporting", routes, known)
 	}
 }
 
@@ -185,8 +187,9 @@ func TestC_the_mark_of_a_departure_is_known_and_has_no_consumer_until_a_service_
 	if err != nil {
 		t.Fatalf("default table: %v", err)
 	}
-	if routes, known := rt.RoutesFor("SalidaMarkedPendienteDeRegularizacion"); !known || len(routes) != 0 {
-		t.Errorf("SalidaMarkedPendienteDeRegularizacion: routes=%v known=%v, want known and with no consumer", routes, known)
+	// spec 012: the audit records it now; commercial-reservation answers 400 to it (G-RL12-2), so it is not a consumer yet
+	if routes, known := rt.RoutesFor("SalidaMarkedPendienteDeRegularizacion"); !known || consumerNames(routes) != "identity-audit" {
+		t.Errorf("SalidaMarkedPendienteDeRegularizacion: routes=%v known=%v, want only the audit", routes, known)
 	}
 }
 
@@ -300,10 +303,9 @@ func TestC_default_routes_send_the_vehicle_change_to_commercial_reservation(t *t
 	if err != nil {
 		t.Fatalf("default table: %v", err)
 	}
-	want := out.Route{Consumer: "commercial-reservation", Path: "/api/v1/commercial-reservation/internal/tenants/{tenantId}/events"}
 	routes, known := rt.RoutesFor("SalidaVehiclesChanged")
-	if !known || len(routes) != 1 || routes[0] != want {
-		t.Errorf("SalidaVehiclesChanged: routes=%v known=%v, want %v", routes, known, want)
+	if !known || consumerNames(routes) != "identity-audit commercial-reservation" {
+		t.Errorf("SalidaVehiclesChanged: routes=%v known=%v, want the audit and commercial-reservation", routes, known)
 	}
 }
 
@@ -326,11 +328,10 @@ func TestC_default_routes_send_the_start_and_the_end_to_commercial_reservation(t
 	if err != nil {
 		t.Fatalf("default table: %v", err)
 	}
-	want := out.Route{Consumer: "commercial-reservation", Path: "/api/v1/commercial-reservation/internal/tenants/{tenantId}/events"}
 	for _, eventType := range []string{"SalidaExecutionStarted", "SalidaFinalized"} {
 		routes, known := rt.RoutesFor(eventType)
-		if !known || len(routes) != 1 || routes[0] != want {
-			t.Errorf("%s: routes=%v known=%v, want %v", eventType, routes, known, want)
+		if !known || consumerNames(routes) != "identity-audit commercial-reservation cash-reporting" {
+			t.Errorf("%s: routes=%v known=%v, want the audit, commercial-reservation and cash-reporting", eventType, routes, known)
 		}
 	}
 }
@@ -385,17 +386,17 @@ func TestRoutes_the_client_notice_reaches_notifications_and_the_audit(t *testing
 	}
 }
 
-// G-RL7-1: the relay reads the outbox of cash-reporting, which writes nine events no service consumes yet (spec 007 leaves them out of scope). They are
-// known and have no consumer, so each one is published without delivery and does not end failed after twenty attempts.
-func TestC_the_events_of_cash_reporting_are_known_and_have_no_consumer(t *testing.T) {
+// G-RL7-1: the relay reads the outbox of cash-reporting, which writes nine events (spec 012: only the audit records them). They are
+// delivered to the audit by the route of its tenant (they were known without a consumer before spec 012).
+func TestC_the_events_of_cash_reporting_reach_the_audit(t *testing.T) {
 	rt, err := config.NewRoutingTable(config.DefaultRoutes())
 	if err != nil {
 		t.Fatalf("default table: %v", err)
 	}
 	for _, name := range []string{"CashSessionOpened", "CashSessionClosed", "CashSessionAutoCreated", "CashSessionAutoClosed", "CashSessionReopened",
 		"CashIncomeRecorded", "OperationalPaymentRecorded", "OperationalExpenseRecorded", "RefundExecuted"} {
-		if routes, known := rt.RoutesFor(name); !known || len(routes) != 0 {
-			t.Errorf("%s: routes=%v known=%v, want known and with no consumer", name, routes, known)
+		if routes, known := rt.RoutesFor(name); !known || consumerNames(routes) != "identity-audit" {
+			t.Errorf("%s: routes=%v known=%v, want only the audit (spec 012)", name, routes, known)
 		}
 	}
 }
@@ -406,15 +407,14 @@ func TestC_the_events_of_cash_reporting_are_known_and_have_no_consumer(t *testin
 // commercial-reservation answer 400 to a tenant event type they do not know, which would end it FAILED after twenty attempts, and the audit
 // record is written by the identity-audit API with the change itself. So it is published without delivery, as SalidaRescheduled is, until a
 // consumer accepts it.
-func TestDefaultRoutes_TenantLocalizationChangedGoesToCommercialReservationOnly(t *testing.T) {
+func TestDefaultRoutes_TenantLocalizationChangedGoesToCommercialReservationAndCashReporting(t *testing.T) {
 	rt, err := config.NewRoutingTable(config.DefaultRoutes())
 	if err != nil {
 		t.Fatalf("default table: %v", err)
 	}
 	routes, known := rt.RoutesFor("TenantLocalizationChanged")
-	want := []out.Route{{Consumer: "commercial-reservation", Path: "/api/v1/commercial-reservation/internal/tenants/{tenantId}/events"}}
-	if !known || fmt.Sprint(routes) != fmt.Sprint(want) {
-		t.Errorf("TenantLocalizationChanged: routes=%v known=%v, want only %v", routes, known, want)
+	if !known || consumerNames(routes) != "commercial-reservation cash-reporting" {
+		t.Errorf("TenantLocalizationChanged: routes=%v known=%v, want commercial-reservation and cash-reporting (spec 012)", routes, known)
 	}
 }
 
@@ -446,5 +446,88 @@ func TestC_the_events_of_commercial_reservation_with_no_consumer_are_known_and_p
 		if routes, known := rt.RoutesFor(name); !known || len(routes) != 0 {
 			t.Errorf("%s: routes=%v known=%v, want known and with no consumer", name, routes, known)
 		}
+	}
+}
+
+// Relay spec 012, AC-RL-12.2: operations-cost writes these three; an unknown type would stop the worker at start.
+func TestC_the_events_of_operations_cost_are_known(t *testing.T) {
+	route := out.Route{Consumer: "identity-audit", Path: "/internal/tenants/{tenantId}/events"}
+	for _, eventType := range []string{"SalidaCancelled", "OperationalCostRecorded", "ExtraordinaryCancellationRecorded"} {
+		if _, err := config.NewRoutingTable(map[string][]out.Route{eventType: {route}}); err != nil {
+			t.Errorf("%s is not a known event type: %v", eventType, err)
+		}
+	}
+}
+
+func consumerNames(routes []out.Route) string {
+	names := make([]string, 0, len(routes))
+	for _, route := range routes {
+		names = append(names, route.Consumer)
+	}
+	return strings.Join(names, " ")
+}
+
+// Relay spec 012, AC-RL-12.1: the whole table, one row per event type, each on the route of the tenant of its consumer. The three lines held by
+// gaps (TenantCreated to cash, G-RL12-1; the mark and the extraordinary cancellation to commercial-reservation, G-RL12-2) are absent on purpose.
+func TestC_the_routes_table_of_spec_012_row_by_row(t *testing.T) {
+	rt, err := config.NewRoutingTable(config.DefaultRoutes())
+	if err != nil {
+		t.Fatalf("default table: %v", err)
+	}
+	audit, commercial, cash := "identity-audit", "commercial-reservation", "cash-reporting"
+	rows := map[string]string{
+		"ReservationCreated": audit + " " + cash, "ReservationCancelled": audit + " " + cash,
+		"ReservationModified": audit + " " + cash, "ReservationConfirmed": audit + " " + cash,
+		"PaymentValidated":                      audit,
+		"SalidaScheduled":                       audit + " " + commercial + " " + cash,
+		"SalidaExecutionStarted":                audit + " " + commercial + " " + cash,
+		"SalidaFinalized":                       audit + " " + commercial + " " + cash,
+		"SalidaCancelled":                       audit + " " + commercial + " " + cash,
+		"SalidaVehiclesChanged":                 audit + " " + commercial,
+		"SalidaMarkedPendienteDeRegularizacion": audit,
+		"OperationalCostRecorded":               audit + " " + cash,
+		"ExtraordinaryCancellationRecorded":     audit,
+		"TenantLocalizationChanged":             commercial + " " + cash,
+	}
+	for _, name := range []string{"CashSessionOpened", "CashSessionClosed", "CashSessionAutoCreated", "CashSessionAutoClosed", "CashSessionReopened",
+		"CashIncomeRecorded", "OperationalPaymentRecorded", "OperationalExpenseRecorded", "RefundExecuted"} {
+		rows[name] = audit
+	}
+	paths := map[string]string{
+		audit:      "/api/v1/identity-audit/internal/tenants/{tenantId}/events",
+		commercial: "/api/v1/commercial-reservation/internal/tenants/{tenantId}/events",
+		cash:       "/api/v1/cash-reporting/internal/tenants/{tenantId}/events",
+	}
+	for eventType, want := range rows {
+		routes, known := rt.RoutesFor(eventType)
+		if !known || consumerNames(routes) != want {
+			t.Errorf("%s: routes=%v known=%v, want consumers %q", eventType, routes, known, want)
+			continue
+		}
+		for _, route := range routes {
+			if route.Path != paths[route.Consumer] {
+				t.Errorf("%s: %s path = %q, want %q", eventType, route.Consumer, route.Path, paths[route.Consumer])
+			}
+		}
+	}
+}
+
+// AC-RL-12.3: the types the relay sends to cash-reporting are exactly the list of its receiving operation (cash-reporting.yaml, receiveFactEvent),
+// copied here; a type sent and not listed would stay pending until FAILED. TenantCreated is not in that list yet (G-RL12-1).
+func TestC_cash_reporting_receives_exactly_the_types_of_its_receiving_operation(t *testing.T) {
+	listed := []string{"ReservationCreated", "ReservationConfirmed", "ReservationCancelled", "ReservationModified", "SalidaScheduled",
+		"SalidaExecutionStarted", "SalidaFinalized", "SalidaCancelled", "OperationalCostRecorded", "TenantLocalizationChanged"}
+	sort.Strings(listed)
+	var sent []string
+	for eventType, routes := range config.DefaultRoutes() {
+		for _, route := range routes {
+			if route.Consumer == "cash-reporting" {
+				sent = append(sent, eventType)
+			}
+		}
+	}
+	sort.Strings(sent)
+	if fmt.Sprint(sent) != fmt.Sprint(listed) {
+		t.Errorf("sent to cash-reporting = %v, want the list of its operation %v", sent, listed)
 	}
 }

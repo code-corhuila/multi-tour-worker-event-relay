@@ -55,7 +55,7 @@ func run() error {
 	cashReporting := client(cfg.CashReportingURL)
 	consumers := map[string]*httpclient.Client{
 		"security": security, "identity-audit": identityAudit, "commercial-reservation": commercialReservation,
-		"notifications": client(cfg.NotificationsURL),
+		"notifications": client(cfg.NotificationsURL), "cash-reporting": cashReporting,
 	}
 	for _, name := range table.Consumers() {
 		if consumers[name] == nil {
