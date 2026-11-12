@@ -66,6 +66,16 @@ var knownEventTypes = map[string]bool{
 	"CustomerRegistered":        true,
 	"DiscountRuleChanged":       true,
 	"SensitiveDataAccessed":     true,
+	// The nine more that it writes since the catalog, credit, retention and reschedule stories (outbox_event CHECK of its -db, event-catalog.md).
+	"CatalogServiceInactivated":           true,
+	"CatalogServiceReactivated":           true,
+	"EstablishmentAssociationPublished":   true,
+	"EstablishmentAssociationInactivated": true,
+	"EstablishmentAssociationReactivated": true,
+	"CreditBalanceRecorded":               true,
+	"CreditBalanceApplied":                true,
+	"ReservationRescheduled":              true,
+	"SensitiveDataDeleted":                true,
 	// The nine events that cash-reporting writes (relay spec 007 leaves them out of scope: no service consumes them yet).
 	"CashSessionOpened":          true,
 	"CashSessionClosed":          true,
@@ -126,8 +136,8 @@ func plainAbsolutePath(path string) bool {
 // relay spec 011), which the audit does not record because it has the facts of the access;
 // commercial-reservation the scheduled departure of operations-cost, the new total of its vehicles (HU-OPS-002) and its
 // start and end (HU-OPS-003). The tenant events also reach commercial-reservation (the copy of the status of the tenant), and
-// AccountEmailVerified reaches it (it links the account to the customer of that tenant) and the audit; the 14 events that
-// commercial-reservation writes reach the audit (relay spec 007). AccountTemporaryCredentialIssued, SalidaRescheduled and
+// AccountEmailVerified reaches it (it links the account to the customer of that tenant) and the audit; the 20 events that
+// commercial-reservation writes reach the audit (relay spec 007 and event-catalog.md); three more of its events are published without delivery. AccountTemporaryCredentialIssued, SalidaRescheduled and
 // SalidaMarkedPendienteDeRegularizacion have no consumer yet and are marked published without delivery on purpose, so they do not
 // pile up in the outbox.
 // shortcut: spec AC-01.2 (the tenant events and AccountSessionsRevoked reach every service) is met only in part: cash-reporting and
@@ -203,6 +213,19 @@ func DefaultRoutes() map[string][]out.Route {
 		"CustomerRegistered":    identityAudit,
 		"DiscountRuleChanged":   identityAudit,
 		"SensitiveDataAccessed": identityAudit,
+		// event-catalog.md: these six also go to the audit (the catalog sends some of them to cash-reporting and operations-cost too, which is relay spec 012 and a
+		// later one, not this table). The audit records any event type.
+		"CatalogServiceInactivated":           identityAudit,
+		"CatalogServiceReactivated":           identityAudit,
+		"EstablishmentAssociationReactivated": identityAudit,
+		"CreditBalanceRecorded":               identityAudit,
+		"CreditBalanceApplied":                identityAudit,
+		"ReservationRescheduled":              identityAudit,
+		// event-catalog.md: the publication and the inactivation of an association are used only inside commercial-reservation, so no service receives them.
+		"EstablishmentAssociationPublished":   nil,
+		"EstablishmentAssociationInactivated": nil,
+		// HU-COM-019 DP-06: not in the catalog yet (its consumer, the audit, is only proposed), so it is published without delivery until the catalog row is merged.
+		"SensitiveDataDeleted": nil,
 	}
 }
 
