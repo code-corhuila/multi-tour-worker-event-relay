@@ -399,3 +399,18 @@ func TestC_the_events_of_cash_reporting_are_known_and_have_no_consumer(t *testin
 		}
 	}
 }
+
+// HU-IDA-004 (spec 010, D-06): the change of the zone or the country of a tenant is known to the table and has no consumer yet. security and
+// commercial-reservation answer 400 to a tenant event type they do not know, which would end it FAILED after twenty attempts, and the audit
+// record is written by the identity-audit API with the change itself. So it is published without delivery, as SalidaRescheduled is, until a
+// consumer accepts it.
+func TestDefaultRoutes_TenantLocalizationChangedIsKnownAndHasNoConsumerYet(t *testing.T) {
+	rt, err := config.NewRoutingTable(config.DefaultRoutes())
+	if err != nil {
+		t.Fatalf("default table: %v", err)
+	}
+	routes, known := rt.RoutesFor("TenantLocalizationChanged")
+	if !known || len(routes) != 0 {
+		t.Errorf("TenantLocalizationChanged: routes=%v known=%v, want known with no route", routes, known)
+	}
+}
