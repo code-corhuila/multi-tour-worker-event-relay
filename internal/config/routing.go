@@ -29,6 +29,7 @@ var knownEventTypes = map[string]bool{
 	"TenantCreated":                         true,
 	"TenantInactivated":                     true,
 	"TenantReactivated":                     true,
+	"TenantLocalizationChanged":             true,
 	"AccountSessionsRevoked":                true,
 	"AccountBlocked":                        true,
 	"SpecialPermissionGranted":              true,
@@ -140,9 +141,12 @@ func DefaultRoutes() map[string][]out.Route {
 	notifications := out.Route{Consumer: "notifications", Path: notificationsEventsPath, NoTenantPath: notificationsEventsNoTenantPath}
 	auditAndNotifications := []out.Route{identityAudit[0], notifications}
 	return map[string][]out.Route{
-		"TenantCreated":             securityAndReservations,
-		"TenantInactivated":         securityAndReservations,
-		"TenantReactivated":         securityAndReservations,
+		"TenantCreated":     securityAndReservations,
+		"TenantInactivated": securityAndReservations,
+		"TenantReactivated": securityAndReservations,
+		// HU-IDA-004: the zone or the country of a tenant changed. security and commercial-reservation answer 400 to a tenant event type they do
+		// not know, so it is published without delivery until each one accepts it (gap G-IDA4-2); the audit record is written with the change itself.
+		"TenantLocalizationChanged": nil,
 		"AccountSessionsRevoked":    identityAudit,
 		"AccountBlocked":            identityAudit,
 		"SpecialPermissionGranted":  identityAudit,
