@@ -422,3 +422,16 @@ func TestA_one_failing_event_does_not_stop_the_batch(t *testing.T) {
 		t.Fatalf("attempts=%v, want one recorded for each failure", src.attempts)
 	}
 }
+
+// Relay spec 012, AC-RL-12.4: a refusal of a consumer is one delivery and one recorded attempt in the run, never a second try inside it; the event stays pending.
+func TestA_a_refusal_is_one_delivery_and_one_attempt_in_the_run(t *testing.T) {
+	src := newSource(event(id1, "TenantCreated"))
+	sink := &fakeSink{failFor: func(out.Delivery) error { return errors.New("deliver to a: status 422") }}
+
+	processed, failed := relay(src, twoConsumers(t), sink).Run(context.Background(), 10)
+
+	if processed != 0 || failed != 1 || len(sink.deliveries) != 1 || len(src.attempts[id1]) != 1 || src.published[id1] {
+		t.Fatalf("processed=%d failed=%d deliveries=%d attempts=%v published=%v, want one delivery, one attempt and the event pending",
+			processed, failed, len(sink.deliveries), src.attempts[id1], src.published[id1])
+	}
+}

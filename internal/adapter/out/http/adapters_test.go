@@ -290,3 +290,27 @@ func TestAdapters_an_unreachable_service_is_a_transport_failure_without_the_toke
 		t.Errorf("error leaks the token: %v", err)
 	}
 }
+
+// Relay spec 012, AC-RL-12.4 and .5 (norm 5.7.2, DP-15-06): a consumer that answers 401, 422 or 404 is asked once in the run; the retry is the one of
+// the owner of the outbox, which counts the attempt.
+func TestSink_a_4xx_is_asked_once_and_is_a_typed_failure(t *testing.T) {
+	for _, status := range []int{401, 422, 404} {
+		hits := 0
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			hits++
+			w.WriteHeader(status)
+		}))
+		sink := relayhttp.NewSink(map[string]*httpclient.Client{"cash-reporting": newClient(srv.URL)})
+
+		err := sink.Deliver(ctx(), out.Delivery{Consumer: "cash-reporting", Path: "/x", IdempotencyKey: eventID})
+		srv.Close()
+
+		var apiErr *httpclient.APIError
+		if !errors.As(err, &apiErr) || apiErr.Status != status {
+			t.Errorf("status %d: want *APIError with that status, got %T %v", status, err, err)
+		}
+		if hits != 1 {
+			t.Errorf("status %d: the consumer was asked %d times, want once", status, hits)
+		}
+	}
+}
