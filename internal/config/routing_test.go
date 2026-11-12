@@ -400,17 +400,51 @@ func TestC_the_events_of_cash_reporting_are_known_and_have_no_consumer(t *testin
 	}
 }
 
-// HU-IDA-004 (spec 010, D-06): the change of the zone or the country of a tenant is known to the table and has no consumer yet. security and
+// HU-IDA-004 (spec 010, D-06, amended): the change of the zone or the country of a tenant goes to commercial-reservation, which consumes it since its
+// TenantEventController maps the type (it keeps the zone and the country of its copy of the tenant). security still answers 400 to a tenant event type
+// it does not know and so gets none; the audit record is written by the identity-audit API with the change. (Before, security and
 // commercial-reservation answer 400 to a tenant event type they do not know, which would end it FAILED after twenty attempts, and the audit
 // record is written by the identity-audit API with the change itself. So it is published without delivery, as SalidaRescheduled is, until a
 // consumer accepts it.
-func TestDefaultRoutes_TenantLocalizationChangedIsKnownAndHasNoConsumerYet(t *testing.T) {
+func TestDefaultRoutes_TenantLocalizationChangedGoesToCommercialReservationOnly(t *testing.T) {
 	rt, err := config.NewRoutingTable(config.DefaultRoutes())
 	if err != nil {
 		t.Fatalf("default table: %v", err)
 	}
 	routes, known := rt.RoutesFor("TenantLocalizationChanged")
-	if !known || len(routes) != 0 {
-		t.Errorf("TenantLocalizationChanged: routes=%v known=%v, want known with no route", routes, known)
+	want := []out.Route{{Consumer: "commercial-reservation", Path: "/api/v1/commercial-reservation/internal/tenants/{tenantId}/events"}}
+	if !known || fmt.Sprint(routes) != fmt.Sprint(want) {
+		t.Errorf("TenantLocalizationChanged: routes=%v known=%v, want only %v", routes, known, want)
+	}
+}
+
+// The events that commercial-reservation writes since the catalog, credit, retention and reschedule stories (event-catalog.md, outbox_event CHECK of the -db):
+// the ones the catalog sends to identity-audit reach it, by the route of their tenant.
+func TestC_the_catalog_credit_and_reschedule_events_of_commercial_reservation_go_to_identity_audit(t *testing.T) {
+	rt, err := config.NewRoutingTable(config.DefaultRoutes())
+	if err != nil {
+		t.Fatalf("default table: %v", err)
+	}
+	for _, eventType := range []string{"CatalogServiceInactivated", "CatalogServiceReactivated", "EstablishmentAssociationReactivated",
+		"CreditBalanceRecorded", "CreditBalanceApplied", "ReservationRescheduled"} {
+		routes, known := rt.RoutesFor(eventType)
+		if !known || len(routes) != 1 || routes[0].Consumer != "identity-audit" ||
+			routes[0].Path != "/api/v1/identity-audit/internal/tenants/{tenantId}/events" {
+			t.Errorf("%s: routes=%v known=%v, want identity-audit on the route of its tenant", eventType, routes, known)
+		}
+	}
+}
+
+// event-catalog.md: the publication and the inactivation of an association are used only inside commercial-reservation, and SensitiveDataDeleted is not in
+// the catalog yet (HU-COM-019 DP-06). They are known and have no consumer, so each one is published without delivery and does not end FAILED.
+func TestC_the_events_of_commercial_reservation_with_no_consumer_are_known_and_published_without_delivery(t *testing.T) {
+	rt, err := config.NewRoutingTable(config.DefaultRoutes())
+	if err != nil {
+		t.Fatalf("default table: %v", err)
+	}
+	for _, name := range []string{"EstablishmentAssociationPublished", "EstablishmentAssociationInactivated", "SensitiveDataDeleted"} {
+		if routes, known := rt.RoutesFor(name); !known || len(routes) != 0 {
+			t.Errorf("%s: routes=%v known=%v, want known and with no consumer", name, routes, known)
+		}
 	}
 }
