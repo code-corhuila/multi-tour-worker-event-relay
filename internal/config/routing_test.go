@@ -431,14 +431,16 @@ func TestC_the_events_of_cash_reporting_reach_the_audit(t *testing.T) {
 // commercial-reservation answer 400 to a tenant event type they do not know, which would end it FAILED after twenty attempts, and the audit
 // record is written by the identity-audit API with the change itself. So it is published without delivery, as SalidaRescheduled is, until a
 // consumer accepts it.
-func TestDefaultRoutes_TenantLocalizationChangedGoesToCommercialReservationAndCashReporting(t *testing.T) {
+// Relay spec 014 (RN-RL-140): cash-reporting does not apply it yet (it answers 500, so the delivery would end FAILED); only commercial-reservation
+// gets it until cash-reporting applies it.
+func TestDefaultRoutes_TenantLocalizationChangedGoesOnlyToCommercialReservation(t *testing.T) {
 	rt, err := config.NewRoutingTable(config.DefaultRoutes())
 	if err != nil {
 		t.Fatalf("default table: %v", err)
 	}
 	routes, known := rt.RoutesFor("TenantLocalizationChanged")
-	if !known || consumerNames(routes) != "commercial-reservation cash-reporting" {
-		t.Errorf("TenantLocalizationChanged: routes=%v known=%v, want commercial-reservation and cash-reporting (spec 012)", routes, known)
+	if !known || consumerNames(routes) != "commercial-reservation" {
+		t.Errorf("TenantLocalizationChanged: routes=%v known=%v, want only commercial-reservation (spec 014)", routes, known)
 	}
 }
 
@@ -473,10 +475,10 @@ func TestC_the_events_of_commercial_reservation_with_no_consumer_are_known_and_p
 	}
 }
 
-// Relay spec 012, AC-RL-12.2: operations-cost writes these three; an unknown type would stop the worker at start.
+// Relay spec 012, AC-RL-12.2, and spec 014: operations-cost writes these four; an unknown type would stop the worker at start.
 func TestC_the_events_of_operations_cost_are_known(t *testing.T) {
 	route := out.Route{Consumer: "identity-audit", Path: "/internal/tenants/{tenantId}/events"}
-	for _, eventType := range []string{"SalidaCancelled", "OperationalCostRecorded", "ExtraordinaryCancellationRecorded"} {
+	for _, eventType := range []string{"SalidaCancelled", "OperationalCostRecorded", "ExtraordinaryCancellationRecorded", "PersonalEmergencyRecorded"} {
 		if _, err := config.NewRoutingTable(map[string][]out.Route{eventType: {route}}); err != nil {
 			t.Errorf("%s is not a known event type: %v", eventType, err)
 		}
@@ -509,9 +511,12 @@ func TestC_the_routes_table_of_spec_012_row_by_row(t *testing.T) {
 		"SalidaCancelled":                       audit + " " + commercial + " " + cash,
 		"SalidaVehiclesChanged":                 audit + " " + commercial,
 		"SalidaMarkedPendienteDeRegularizacion": audit,
-		"OperationalCostRecorded":               audit + " " + cash,
+		"OperationalCostRecorded":               audit, // relay spec 014, RN-RL-140: cash-reporting does not apply it yet
 		"ExtraordinaryCancellationRecorded":     audit,
-		"TenantLocalizationChanged":             commercial + " " + cash,
+		"TenantLocalizationChanged":             commercial, // relay spec 014, RN-RL-140
+		// relay spec 014, RN-RL-141: written by operations-cost and commercial-reservation; the audit records them
+		"PersonalEmergencyRecorded": audit,
+		"PaymentParametersChanged":  audit,
 	}
 	for _, name := range []string{"CashSessionOpened", "CashSessionClosed", "CashSessionAutoCreated", "CashSessionAutoClosed", "CashSessionReopened",
 		"CashIncomeRecorded", "OperationalPaymentRecorded", "OperationalExpenseRecorded", "RefundExecuted"} {
@@ -539,8 +544,10 @@ func TestC_the_routes_table_of_spec_012_row_by_row(t *testing.T) {
 // AC-RL-12.3: the types the relay sends to cash-reporting are exactly the list of its receiving operation (cash-reporting.yaml, receiveFactEvent),
 // copied here; a type sent and not listed would stay pending until FAILED. TenantCreated is not in that list yet (G-RL12-1).
 func TestC_cash_reporting_receives_exactly_the_types_of_its_receiving_operation(t *testing.T) {
+	// relay spec 014: OperationalCostRecorded and TenantLocalizationChanged are in the contract, but cash-reporting does not apply them yet
+	// (its NOT_YET list answers 500); they come back here when it does (G-RL14-1)
 	listed := []string{"ReservationCreated", "ReservationConfirmed", "ReservationCancelled", "ReservationModified", "SalidaScheduled",
-		"SalidaExecutionStarted", "SalidaFinalized", "SalidaCancelled", "OperationalCostRecorded", "TenantLocalizationChanged"}
+		"SalidaExecutionStarted", "SalidaFinalized", "SalidaCancelled"}
 	sort.Strings(listed)
 	var sent []string
 	for eventType, routes := range config.DefaultRoutes() {
