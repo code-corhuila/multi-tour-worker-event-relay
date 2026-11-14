@@ -154,8 +154,8 @@ func plainAbsolutePath(path string) bool {
 // relay spec 011), which the audit does not record because it has the facts of the access;
 // commercial-reservation the scheduled departure of operations-cost, the new total of its vehicles (HU-OPS-002) and its
 // start and end (HU-OPS-003). The tenant events also reach commercial-reservation (the copy of the status of the tenant), and
-// AccountEmailVerified reaches it (it links the account to the customer of that tenant) and the audit; the 21 events that
-// commercial-reservation writes reach the audit (relay spec 007 and event-catalog.md); three more of its events are published without delivery. AccountTemporaryCredentialIssued and
+// AccountEmailVerified reaches it (it links the account to the customer of that tenant) and the audit; the 22 events that
+// commercial-reservation writes reach the audit (relay spec 007 and event-catalog.md); two more of its events are published without delivery. AccountTemporaryCredentialIssued and
 // SalidaRescheduled have no consumer yet and are marked published without delivery on purpose, so they do not
 // pile up in the outbox.
 // shortcut: spec AC-01.2 (the tenant events and AccountSessionsRevoked reach every service) is met only in part: operations-cost has no
@@ -253,8 +253,8 @@ func DefaultRoutes() map[string][]out.Route {
 		// event-catalog.md: the publication and the inactivation of an association are used only inside commercial-reservation, so no service receives them.
 		"EstablishmentAssociationPublished":   nil,
 		"EstablishmentAssociationInactivated": nil,
-		// HU-COM-019 DP-06: not in the catalog yet (its consumer, the audit, is only proposed), so it is published without delivery until the catalog row is merged.
-		"SensitiveDataDeleted": nil,
+		// HU-COM-019: the deletion of the sensitive data of a reservation; the audit keeps it (event-catalog.md, relay spec 016).
+		"SensitiveDataDeleted": identityAudit,
 		// HU-COM-009 DP-04: the owner of the payment parameters writes it and the audit stores it (02-domain/domain-events.md).
 		"PaymentParametersChanged": identityAudit,
 	}
