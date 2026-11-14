@@ -22,6 +22,12 @@ const (
 	// 400 to a type outside its closed list, so a line is added here only for a type of that list.
 	cashEventsPath = "/api/v1/cash-reporting/internal/tenants/{tenantId}/events"
 
+	// The revocation of the sessions of an account (HU-SEC-005 AC4, HU-SEC-006 AC7): commercial-reservation and cash-reporting keep a cutoff and
+	// receive it by a route of their own with no tenant in its path, because the account of a Platform Administrator has none; only the SERVICE
+	// role, the event id as the Idempotency-Key, 201 the first time and 200 for a repeat or an older cutoff.
+	reservationSessionEventsPath = "/api/v1/commercial-reservation/internal/events"
+	cashSessionEventsPath        = "/api/v1/cash-reporting/internal/events"
+
 	// job 4 receives the facts of a reset it tells the owner about (relay spec 009) and the notices of the customers (HU-COM-015)
 	notificationsEventsPath         = "/api/v1/notifications/internal/tenants/{tenantId}/events"
 	notificationsEventsNoTenantPath = "/api/v1/notifications/internal/events"
@@ -148,9 +154,8 @@ func plainAbsolutePath(path string) bool {
 // commercial-reservation writes reach the audit (relay spec 007 and event-catalog.md); three more of its events are published without delivery. AccountTemporaryCredentialIssued and
 // SalidaRescheduled have no consumer yet and are marked published without delivery on purpose, so they do not
 // pile up in the outbox.
-// shortcut: spec AC-01.2 (the tenant events and AccountSessionsRevoked reach every service) is met only in part: cash-reporting and
-// operations-cost have no receiving route and nothing reaches commercial-reservation about revoked sessions; add one line per
-// consumer as each service exposes its route. The relay reads the outbox of cash-reporting (G-RL7-1); its PlatformExceptionalAccessUsed reaches the audit by event type.
+// shortcut: spec AC-01.2 (the tenant events and AccountSessionsRevoked reach every service) is met only in part: operations-cost has no
+// receiving route for revoked sessions; add one line as it exposes its route. The relay reads the outbox of cash-reporting (G-RL7-1); its PlatformExceptionalAccessUsed reaches the audit by event type.
 func DefaultRoutes() map[string][]out.Route {
 	security := []out.Route{{Consumer: "security", Path: tenantEventsPath}}
 	identityAudit := []out.Route{{Consumer: "identity-audit", Path: auditEventsPath, NoTenantPath: auditEventsNoTenantPath}}
@@ -169,7 +174,7 @@ func DefaultRoutes() map[string][]out.Route {
 		// HU-IDA-004: the zone or the country of a tenant changed. commercial-reservation consumes it (it keeps them in its copy of the tenant);
 		// security answers 400 to a tenant event type it does not know, so it gets none; the audit record is written with the change.
 		"TenantLocalizationChanged": {reservations[0], cash},
-		"AccountSessionsRevoked":    identityAudit,
+		"AccountSessionsRevoked":    {identityAudit[0], {Consumer: "commercial-reservation", Path: reservationSessionEventsPath}, {Consumer: "cash-reporting", Path: cashSessionEventsPath}},
 		"AccountBlocked":            identityAudit,
 		"SpecialPermissionGranted":  identityAudit,
 		"SpecialPermissionRevoked":  identityAudit,
