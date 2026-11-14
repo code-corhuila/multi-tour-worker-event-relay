@@ -99,11 +99,35 @@ func TestC_default_routes_send_the_audited_security_events_to_identity_audit(t *
 		Path:         "/api/v1/identity-audit/internal/tenants/{tenantId}/events",
 		NoTenantPath: "/api/v1/identity-audit/internal/events",
 	}
-	for _, eventType := range []string{"AccountSessionsRevoked", "AccountBlocked", "SpecialPermissionGranted",
+	for _, eventType := range []string{"AccountBlocked", "SpecialPermissionGranted",
 		"SpecialPermissionRevoked", "OptionalRoleEnabled", "OptionalRoleDisabled"} {
 		routes, known := rt.RoutesFor(eventType)
 		if !known || len(routes) != 1 || routes[0] != want {
 			t.Errorf("%s: routes=%v known=%v, want %v", eventType, routes, known, want)
+		}
+	}
+}
+
+// HU-SEC-005 AC4 and HU-SEC-006 AC7: the sessions of an account that was revoked are cut in every service that validates a token. identity-audit
+// records it by the tenant or no-tenant path, and commercial-reservation and cash-reporting receive it by the route of their own that has no
+// tenant in its path (the account of a Platform Administrator has none), with the event id as the Idempotency-Key.
+func TestC_a_revocation_of_the_sessions_reaches_the_audit_and_the_services_that_hold_a_cutoff(t *testing.T) {
+	rt, err := config.NewRoutingTable(config.DefaultRoutes())
+	if err != nil {
+		t.Fatalf("default table: %v", err)
+	}
+	routes, known := rt.RoutesFor("AccountSessionsRevoked")
+	want := []out.Route{
+		{Consumer: "identity-audit", Path: "/api/v1/identity-audit/internal/tenants/{tenantId}/events", NoTenantPath: "/api/v1/identity-audit/internal/events"},
+		{Consumer: "commercial-reservation", Path: "/api/v1/commercial-reservation/internal/events"},
+		{Consumer: "cash-reporting", Path: "/api/v1/cash-reporting/internal/events"},
+	}
+	if !known || len(routes) != len(want) {
+		t.Fatalf("AccountSessionsRevoked: routes=%v known=%v, want %v", routes, known, want)
+	}
+	for i := range want {
+		if routes[i] != want[i] {
+			t.Errorf("route %d = %v, want %v", i, routes[i], want[i])
 		}
 	}
 }
@@ -521,7 +545,8 @@ func TestC_cash_reporting_receives_exactly_the_types_of_its_receiving_operation(
 	var sent []string
 	for eventType, routes := range config.DefaultRoutes() {
 		for _, route := range routes {
-			if route.Consumer == "cash-reporting" {
+			// the revocation of the sessions goes to the route of its own operation (receivePlatformEvent), not to this one
+			if route.Consumer == "cash-reporting" && route.Path == "/api/v1/cash-reporting/internal/tenants/{tenantId}/events" {
 				sent = append(sent, eventType)
 			}
 		}
