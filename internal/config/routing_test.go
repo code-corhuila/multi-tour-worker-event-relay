@@ -82,7 +82,7 @@ func TestC_default_routes_name_only_the_consumers_the_worker_serves(t *testing.T
 	if err != nil {
 		t.Fatalf("default table: %v", err)
 	}
-	if got, want := fmt.Sprint(rt.Consumers()), "[cash-reporting commercial-reservation identity-audit notifications security]"; got != want {
+	if got, want := fmt.Sprint(rt.Consumers()), "[cash-reporting commercial-reservation identity-audit notifications operations-cost security]"; got != want {
 		t.Errorf("consumers = %s, want %s", got, want)
 	}
 }
@@ -121,6 +121,8 @@ func TestC_a_revocation_of_the_sessions_reaches_the_audit_and_the_services_that_
 		{Consumer: "identity-audit", Path: "/api/v1/identity-audit/internal/tenants/{tenantId}/events", NoTenantPath: "/api/v1/identity-audit/internal/events"},
 		{Consumer: "commercial-reservation", Path: "/api/v1/commercial-reservation/internal/events"},
 		{Consumer: "cash-reporting", Path: "/api/v1/cash-reporting/internal/events"},
+		// relay spec 015 (RN-RL-150): operations-cost keeps a cutoff too since operations-cost-api spec 013
+		{Consumer: "operations-cost", Path: "/api/v1/operations-cost/internal/events"},
 	}
 	if !known || len(routes) != len(want) {
 		t.Fatalf("AccountSessionsRevoked: routes=%v known=%v, want %v", routes, known, want)

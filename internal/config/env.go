@@ -19,7 +19,8 @@ type Relay struct {
 	HealthAddr       string
 	SecurityURL      string
 	IdentityAuditURL string
-	// OperationsCostURL is where the outbox of operations-cost is read (its scheduled departures); CommercialReservationURL is
+	// OperationsCostURL is where the outbox of operations-cost is read and where the revocation of the sessions is delivered (relay spec 015);
+	// CommercialReservationURL is
 	// where those events are delivered (ADR-004 D4).
 	OperationsCostURL        string
 	CommercialReservationURL string
