@@ -460,17 +460,28 @@ func TestC_the_catalog_credit_and_reschedule_events_of_commercial_reservation_go
 	}
 }
 
-// event-catalog.md: the publication and the inactivation of an association are used only inside commercial-reservation, and SensitiveDataDeleted is not in
-// the catalog yet (HU-COM-019 DP-06). They are known and have no consumer, so each one is published without delivery and does not end FAILED.
+// event-catalog.md: the publication and the inactivation of an association are used only inside commercial-reservation, so no service receives
+// them. They are known and have no consumer, so each one is published without delivery and does not end FAILED.
 func TestC_the_events_of_commercial_reservation_with_no_consumer_are_known_and_published_without_delivery(t *testing.T) {
 	rt, err := config.NewRoutingTable(config.DefaultRoutes())
 	if err != nil {
 		t.Fatalf("default table: %v", err)
 	}
-	for _, name := range []string{"EstablishmentAssociationPublished", "EstablishmentAssociationInactivated", "SensitiveDataDeleted"} {
+	for _, name := range []string{"EstablishmentAssociationPublished", "EstablishmentAssociationInactivated"} {
 		if routes, known := rt.RoutesFor(name); !known || len(routes) != 0 {
 			t.Errorf("%s: routes=%v known=%v, want known and with no consumer", name, routes, known)
 		}
+	}
+}
+
+// Relay spec 016 (RN-RL-161): the deletion of the sensitive data of a reservation (HU-COM-019) is in the catalog now and the audit keeps it.
+func TestC_the_deletion_of_sensitive_data_reaches_the_audit(t *testing.T) {
+	rt, err := config.NewRoutingTable(config.DefaultRoutes())
+	if err != nil {
+		t.Fatalf("default table: %v", err)
+	}
+	if routes, known := rt.RoutesFor("SensitiveDataDeleted"); !known || consumerNames(routes) != "identity-audit" {
+		t.Errorf("SensitiveDataDeleted: routes=%v known=%v, want the audit", routes, known)
 	}
 }
 
