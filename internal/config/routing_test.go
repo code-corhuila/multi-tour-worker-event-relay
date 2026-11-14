@@ -82,7 +82,7 @@ func TestC_default_routes_name_only_the_consumers_the_worker_serves(t *testing.T
 	if err != nil {
 		t.Fatalf("default table: %v", err)
 	}
-	if got, want := fmt.Sprint(rt.Consumers()), "[cash-reporting commercial-reservation identity-audit notifications security]"; got != want {
+	if got, want := fmt.Sprint(rt.Consumers()), "[cash-reporting commercial-reservation identity-audit notifications operations-cost security]"; got != want {
 		t.Errorf("consumers = %s, want %s", got, want)
 	}
 }
