@@ -431,16 +431,15 @@ func TestC_the_events_of_cash_reporting_reach_the_audit(t *testing.T) {
 // commercial-reservation answer 400 to a tenant event type they do not know, which would end it FAILED after twenty attempts, and the audit
 // record is written by the identity-audit API with the change itself. So it is published without delivery, as SalidaRescheduled is, until a
 // consumer accepts it.
-// Relay spec 014 (RN-RL-140): cash-reporting does not apply it yet (it answers 500, so the delivery would end FAILED); only commercial-reservation
-// gets it until cash-reporting applies it.
-func TestDefaultRoutes_TenantLocalizationChangedGoesOnlyToCommercialReservation(t *testing.T) {
+// Relay spec 016 (RN-RL-160): cash-reporting applies it since 2026-11-13, so it goes back to commercial-reservation and cash-reporting.
+func TestDefaultRoutes_TenantLocalizationChangedGoesToCommercialReservationAndCashReporting(t *testing.T) {
 	rt, err := config.NewRoutingTable(config.DefaultRoutes())
 	if err != nil {
 		t.Fatalf("default table: %v", err)
 	}
 	routes, known := rt.RoutesFor("TenantLocalizationChanged")
-	if !known || consumerNames(routes) != "commercial-reservation" {
-		t.Errorf("TenantLocalizationChanged: routes=%v known=%v, want only commercial-reservation (spec 014)", routes, known)
+	if !known || consumerNames(routes) != "commercial-reservation cash-reporting" {
+		t.Errorf("TenantLocalizationChanged: routes=%v known=%v, want commercial-reservation and cash-reporting (spec 016)", routes, known)
 	}
 }
 
@@ -461,17 +460,28 @@ func TestC_the_catalog_credit_and_reschedule_events_of_commercial_reservation_go
 	}
 }
 
-// event-catalog.md: the publication and the inactivation of an association are used only inside commercial-reservation, and SensitiveDataDeleted is not in
-// the catalog yet (HU-COM-019 DP-06). They are known and have no consumer, so each one is published without delivery and does not end FAILED.
+// event-catalog.md: the publication and the inactivation of an association are used only inside commercial-reservation, so no service receives
+// them. They are known and have no consumer, so each one is published without delivery and does not end FAILED.
 func TestC_the_events_of_commercial_reservation_with_no_consumer_are_known_and_published_without_delivery(t *testing.T) {
 	rt, err := config.NewRoutingTable(config.DefaultRoutes())
 	if err != nil {
 		t.Fatalf("default table: %v", err)
 	}
-	for _, name := range []string{"EstablishmentAssociationPublished", "EstablishmentAssociationInactivated", "SensitiveDataDeleted"} {
+	for _, name := range []string{"EstablishmentAssociationPublished", "EstablishmentAssociationInactivated"} {
 		if routes, known := rt.RoutesFor(name); !known || len(routes) != 0 {
 			t.Errorf("%s: routes=%v known=%v, want known and with no consumer", name, routes, known)
 		}
+	}
+}
+
+// Relay spec 016 (RN-RL-161): the deletion of the sensitive data of a reservation (HU-COM-019) is in the catalog now and the audit keeps it.
+func TestC_the_deletion_of_sensitive_data_reaches_the_audit(t *testing.T) {
+	rt, err := config.NewRoutingTable(config.DefaultRoutes())
+	if err != nil {
+		t.Fatalf("default table: %v", err)
+	}
+	if routes, known := rt.RoutesFor("SensitiveDataDeleted"); !known || consumerNames(routes) != "identity-audit" {
+		t.Errorf("SensitiveDataDeleted: routes=%v known=%v, want the audit", routes, known)
 	}
 }
 
@@ -511,9 +521,9 @@ func TestC_the_routes_table_of_spec_012_row_by_row(t *testing.T) {
 		"SalidaCancelled":                       audit + " " + commercial + " " + cash,
 		"SalidaVehiclesChanged":                 audit + " " + commercial,
 		"SalidaMarkedPendienteDeRegularizacion": audit,
-		"OperationalCostRecorded":               audit, // relay spec 014, RN-RL-140: cash-reporting does not apply it yet
+		"OperationalCostRecorded":               audit + " " + cash, // relay spec 016, RN-RL-160: cash-reporting applies it again
 		"ExtraordinaryCancellationRecorded":     audit,
-		"TenantLocalizationChanged":             commercial, // relay spec 014, RN-RL-140
+		"TenantLocalizationChanged":             commercial + " " + cash, // relay spec 016, RN-RL-160
 		// relay spec 014, RN-RL-141: written by operations-cost and commercial-reservation; the audit records them
 		"PersonalEmergencyRecorded": audit,
 		"PaymentParametersChanged":  audit,
@@ -544,10 +554,9 @@ func TestC_the_routes_table_of_spec_012_row_by_row(t *testing.T) {
 // AC-RL-12.3: the types the relay sends to cash-reporting are exactly the list of its receiving operation (cash-reporting.yaml, receiveFactEvent),
 // copied here; a type sent and not listed would stay pending until FAILED. TenantCreated is not in that list yet (G-RL12-1).
 func TestC_cash_reporting_receives_exactly_the_types_of_its_receiving_operation(t *testing.T) {
-	// relay spec 014: OperationalCostRecorded and TenantLocalizationChanged are in the contract, but cash-reporting does not apply them yet
-	// (its NOT_YET list answers 500); they come back here when it does (G-RL14-1)
+	// relay spec 016: cash-reporting applies OperationalCostRecorded and TenantLocalizationChanged since 2026-11-13 (G-RL14-1 closed)
 	listed := []string{"ReservationCreated", "ReservationConfirmed", "ReservationCancelled", "ReservationModified", "SalidaScheduled",
-		"SalidaExecutionStarted", "SalidaFinalized", "SalidaCancelled"}
+		"SalidaExecutionStarted", "SalidaFinalized", "SalidaCancelled", "OperationalCostRecorded", "TenantLocalizationChanged"}
 	sort.Strings(listed)
 	var sent []string
 	for eventType, routes := range config.DefaultRoutes() {

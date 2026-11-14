@@ -19,8 +19,7 @@ const (
 	reservationEventsPath = "/api/v1/commercial-reservation/internal/tenants/{tenantId}/events"
 
 	// cash-reporting receives the facts of reservations and departures for its dashboard and monthly report (relay spec 012); it answers
-	// 400 to a type outside its closed list and 500 to a listed type it does not apply yet (NOT_YET), so a line is added here only for a type
-	// of that list that it applies (relay spec 014, G-RL14-1).
+	// 400 to a type outside its closed list, so a line is added here only for a type of that list (relay specs 012, 014 and 016).
 	cashEventsPath = "/api/v1/cash-reporting/internal/tenants/{tenantId}/events"
 
 	// The revocation of the sessions of an account (HU-SEC-005 AC4, HU-SEC-006 AC7): commercial-reservation and cash-reporting keep a cutoff and
@@ -155,8 +154,8 @@ func plainAbsolutePath(path string) bool {
 // relay spec 011), which the audit does not record because it has the facts of the access;
 // commercial-reservation the scheduled departure of operations-cost, the new total of its vehicles (HU-OPS-002) and its
 // start and end (HU-OPS-003). The tenant events also reach commercial-reservation (the copy of the status of the tenant), and
-// AccountEmailVerified reaches it (it links the account to the customer of that tenant) and the audit; the 21 events that
-// commercial-reservation writes reach the audit (relay spec 007 and event-catalog.md); three more of its events are published without delivery. AccountTemporaryCredentialIssued and
+// AccountEmailVerified reaches it (it links the account to the customer of that tenant) and the audit; the 22 events that
+// commercial-reservation writes reach the audit (relay spec 007 and event-catalog.md); two more of its events are published without delivery. AccountTemporaryCredentialIssued and
 // SalidaRescheduled have no consumer yet and are marked published without delivery on purpose, so they do not
 // pile up in the outbox.
 // shortcut: spec AC-01.2 (the tenant events and AccountSessionsRevoked reach every service) is met only in part: operations-cost has no
@@ -178,8 +177,8 @@ func DefaultRoutes() map[string][]out.Route {
 		"TenantReactivated": securityAndReservations,
 		// HU-IDA-004: the zone or the country of a tenant changed. commercial-reservation consumes it (it keeps them in its copy of the tenant);
 		// security answers 400 to a tenant event type it does not know, so it gets none; the audit record is written with the change.
-		// shortcut: cash-reporting is in the contract but answers 500 until it applies the type (relay spec 014, G-RL14-1); add `cash` back then.
-		"TenantLocalizationChanged": reservations,
+		// cash-reporting keeps the zone of the tenant for its day and its month (relay spec 016, which closes G-RL14-1).
+		"TenantLocalizationChanged": {reservations[0], cash},
 		"AccountSessionsRevoked":    {identityAudit[0], {Consumer: "commercial-reservation", Path: reservationSessionEventsPath}, {Consumer: "cash-reporting", Path: cashSessionEventsPath}},
 		"AccountBlocked":            identityAudit,
 		"SpecialPermissionGranted":  identityAudit,
@@ -205,9 +204,9 @@ func DefaultRoutes() map[string][]out.Route {
 		"SalidaExecutionStarted": auditReservationsAndCash,
 		"SalidaFinalized":        auditReservationsAndCash,
 		"SalidaCancelled":        auditReservationsAndCash,
-		// relay spec 012: operations-cost writes them; commercial-reservation answers 400 to both (G-RL12-2), so only the audit.
-		// shortcut: cash-reporting answers 500 to the cost until it applies it (relay spec 014, G-RL14-1); go back to auditAndCash then.
-		"OperationalCostRecorded":           identityAudit,
+		// relay spec 012: operations-cost writes them; commercial-reservation answers 400 to both (G-RL12-2); cash-reporting applies the
+		// cost to its month again since relay spec 016.
+		"OperationalCostRecorded":           auditAndCash,
 		"ExtraordinaryCancellationRecorded": identityAudit,
 		// relay spec 014: commercial-reservation has no consumer of it yet (G-API8-2), so only the audit until it does.
 		"PersonalEmergencyRecorded": identityAudit,
@@ -254,8 +253,8 @@ func DefaultRoutes() map[string][]out.Route {
 		// event-catalog.md: the publication and the inactivation of an association are used only inside commercial-reservation, so no service receives them.
 		"EstablishmentAssociationPublished":   nil,
 		"EstablishmentAssociationInactivated": nil,
-		// HU-COM-019 DP-06: not in the catalog yet (its consumer, the audit, is only proposed), so it is published without delivery until the catalog row is merged.
-		"SensitiveDataDeleted": nil,
+		// HU-COM-019: the deletion of the sensitive data of a reservation; the audit keeps it (event-catalog.md, relay spec 016).
+		"SensitiveDataDeleted": identityAudit,
 		// HU-COM-009 DP-04: the owner of the payment parameters writes it and the audit stores it (02-domain/domain-events.md).
 		"PaymentParametersChanged": identityAudit,
 	}
