@@ -27,6 +27,8 @@ const (
 	// role, the event id as the Idempotency-Key, 201 the first time and 200 for a repeat or an older cutoff.
 	reservationSessionEventsPath = "/api/v1/commercial-reservation/internal/events"
 	cashSessionEventsPath        = "/api/v1/cash-reporting/internal/events"
+	// operations-cost keeps the same cutoff since its api spec 013 (relay spec 015)
+	operationsSessionEventsPath = "/api/v1/operations-cost/internal/events"
 
 	// job 4 receives the facts of a reset it tells the owner about (relay spec 009) and the notices of the customers (HU-COM-015)
 	notificationsEventsPath         = "/api/v1/notifications/internal/tenants/{tenantId}/events"
@@ -158,8 +160,7 @@ func plainAbsolutePath(path string) bool {
 // commercial-reservation writes reach the audit (relay spec 007 and event-catalog.md); two more of its events are published without delivery. AccountTemporaryCredentialIssued and
 // SalidaRescheduled have no consumer yet and are marked published without delivery on purpose, so they do not
 // pile up in the outbox.
-// shortcut: spec AC-01.2 (the tenant events and AccountSessionsRevoked reach every service) is met only in part: operations-cost has no
-// receiving route for revoked sessions; add one line as it exposes its route. The relay reads the outbox of cash-reporting (G-RL7-1); its PlatformExceptionalAccessUsed reaches the audit by event type.
+// AccountSessionsRevoked reaches every service that accepts a token (relay specs 013 and 015). The relay reads the outbox of cash-reporting (G-RL7-1); its PlatformExceptionalAccessUsed reaches the audit by event type.
 func DefaultRoutes() map[string][]out.Route {
 	security := []out.Route{{Consumer: "security", Path: tenantEventsPath}}
 	identityAudit := []out.Route{{Consumer: "identity-audit", Path: auditEventsPath, NoTenantPath: auditEventsNoTenantPath}}
@@ -179,7 +180,7 @@ func DefaultRoutes() map[string][]out.Route {
 		// security answers 400 to a tenant event type it does not know, so it gets none; the audit record is written with the change.
 		// cash-reporting keeps the zone of the tenant for its day and its month (relay spec 016, which closes G-RL14-1).
 		"TenantLocalizationChanged": {reservations[0], cash},
-		"AccountSessionsRevoked":    {identityAudit[0], {Consumer: "commercial-reservation", Path: reservationSessionEventsPath}, {Consumer: "cash-reporting", Path: cashSessionEventsPath}},
+		"AccountSessionsRevoked":    {identityAudit[0], {Consumer: "commercial-reservation", Path: reservationSessionEventsPath}, {Consumer: "cash-reporting", Path: cashSessionEventsPath}, {Consumer: "operations-cost", Path: operationsSessionEventsPath}},
 		"AccountBlocked":            identityAudit,
 		"SpecialPermissionGranted":  identityAudit,
 		"SpecialPermissionRevoked":  identityAudit,
