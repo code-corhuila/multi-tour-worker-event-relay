@@ -3,6 +3,7 @@ package usecase_test
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -10,6 +11,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/code-corhuila/multi-tour-worker-event-relay/internal/application/port/out"
 	"github.com/code-corhuila/multi-tour-worker-event-relay/internal/application/usecase"
@@ -64,13 +66,13 @@ func (s *fakeSource) MarkPublished(_ context.Context, id string) error {
 	return nil
 }
 
-func (s *fakeSource) RecordFailedAttempt(_ context.Context, id, message string) error {
+func (s *fakeSource) RecordFailedAttempt(_ context.Context, id, message string) (bool, error) {
 	s.attempts[id] = append(s.attempts[id], message)
 	if len(s.attempts[id]) >= maxAttempts {
 		s.failed[id] = true
 		s.drop(id)
 	}
-	return nil
+	return s.failed[id], nil
 }
 
 func (s *fakeSource) drop(id string) {
@@ -252,6 +254,94 @@ func TestA_twentieth_failure_marks_the_event_failed(t *testing.T) {
 	}
 }
 
+// alertLines returns the JSON log lines that carry an alert field.
+func alertLines(t *testing.T, logs *bytes.Buffer) []map[string]any {
+	t.Helper()
+	var found []map[string]any
+	for _, line := range strings.Split(strings.TrimSpace(logs.String()), "\n") {
+		if line == "" {
+			continue
+		}
+		var entry map[string]any
+		if err := json.Unmarshal([]byte(line), &entry); err != nil {
+			t.Fatalf("log line is not JSON: %q", line)
+		}
+		if _, ok := entry["alert"]; ok {
+			found = append(found, entry)
+		}
+	}
+	return found
+}
+
+func TestA_failed_event_raises_an_alert_without_the_payload(t *testing.T) {
+	e := event(id1, "TenantCreated")
+	e.Payload = json.RawMessage(`{"secret":"payload-must-not-be-logged"}`)
+	src := newSource(e)
+	sink := &fakeSink{failFor: func(out.Delivery) error { return errors.New("down") }}
+	var logs bytes.Buffer
+	job := usecase.NewRelayEvents([]usecase.Publisher{{Name: "security", Source: src}}, twoConsumers(t), sink,
+		slog.New(slog.NewJSONHandler(&logs, nil)))
+
+	for run := 1; run < maxAttempts; run++ {
+		job.Run(context.Background(), 10)
+	}
+	if got := alertLines(t, &logs); len(got) != 0 {
+		t.Fatalf("an alert before the event failed: %v", got)
+	}
+	job.Run(context.Background(), 10)
+
+	alerts := alertLines(t, &logs)
+	if len(alerts) != 1 || alerts[0]["alert"] != "event_failed" || alerts[0]["level"] != "ERROR" ||
+		alerts[0]["eventId"] != id1 || alerts[0]["eventType"] != "TenantCreated" || alerts[0]["publisher"] != "security" {
+		t.Fatalf("alerts = %v, want one ERROR event_failed with the event id, type and publisher", alerts)
+	}
+	if strings.Contains(logs.String(), "payload-must-not-be-logged") {
+		t.Fatal("the payload reached the log")
+	}
+}
+
+func TestA_event_pending_over_five_minutes_raises_an_alert(t *testing.T) {
+	now := time.Date(2026, 10, 23, 12, 0, 0, 0, time.UTC)
+	old, recent := event(id1, "TenantCreated"), event(id2, "TenantCreated")
+	old.OccurredAt, recent.OccurredAt = now.Add(-6*time.Minute), now.Add(-2*time.Minute)
+	src, sink := newSource(old, recent), &fakeSink{}
+	var logs bytes.Buffer
+	job := usecase.NewRelayEvents([]usecase.Publisher{{Name: "security", Source: src}}, twoConsumers(t), sink,
+		slog.New(slog.NewJSONHandler(&logs, nil))).WithClock(func() time.Time { return now })
+
+	job.Run(context.Background(), 10)
+
+	alerts := alertLines(t, &logs)
+	if len(alerts) != 1 || alerts[0]["alert"] != "event_pending_too_long" || alerts[0]["level"] != "WARN" ||
+		alerts[0]["eventId"] != id1 || alerts[0]["publisher"] != "security" {
+		t.Fatalf("alerts = %v, want one WARN event_pending_too_long for the old event only", alerts)
+	}
+}
+
+func TestA_pending_alert_has_its_limits_and_cannot_be_forged_by_the_event_type(t *testing.T) {
+	now := time.Date(2026, 10, 23, 12, 0, 0, 0, time.UTC)
+	exactly, unknown := event(id1, "TenantCreated"), event(id2, "TenantCreated")
+	exactly.OccurredAt = now.Add(-5 * time.Minute) // not older than five minutes
+	unknown.OccurredAt = time.Time{}               // no date: no age to judge
+	forged := event(id3, "Evil\n{\"alert\":\"event_failed\"}")
+	forged.OccurredAt = now.Add(-10 * time.Minute)
+	src, sink := newSource(exactly, unknown, forged), &fakeSink{}
+	var logs bytes.Buffer
+	job := usecase.NewRelayEvents([]usecase.Publisher{{Name: "security", Source: src}}, twoConsumers(t), sink,
+		slog.New(slog.NewJSONHandler(&logs, nil))).WithClock(func() time.Time { return now })
+
+	job.Run(context.Background(), 10)
+
+	for _, alert := range alertLines(t, &logs) {
+		if alert["alert"] != "event_pending_too_long" || alert["eventId"] != id3 {
+			t.Fatalf("unexpected alert %v: only the ten-minute event is old, and its type cannot forge a line", alert)
+		}
+	}
+	if got := alertLines(t, &logs); len(got) != 1 {
+		t.Fatalf("alerts = %v, want exactly one (for the ten-minute event)", got)
+	}
+}
+
 func TestC_a_tenant_id_that_is_not_a_uuid_never_becomes_a_path(t *testing.T) {
 	for _, bad := range []string{"..", "a/b", "x?y", "%2e", "", id1 + "/../x"} {
 		e := event(id1, "TenantCreated")
@@ -330,5 +420,18 @@ func TestA_one_failing_event_does_not_stop_the_batch(t *testing.T) {
 	}
 	if len(src.attempts[id1]) != 1 || len(src.attempts[id2]) != 1 {
 		t.Fatalf("attempts=%v, want one recorded for each failure", src.attempts)
+	}
+}
+
+// Relay spec 012, AC-RL-12.4: a refusal of a consumer is one delivery and one recorded attempt in the run, never a second try inside it; the event stays pending.
+func TestA_a_refusal_is_one_delivery_and_one_attempt_in_the_run(t *testing.T) {
+	src := newSource(event(id1, "TenantCreated"))
+	sink := &fakeSink{failFor: func(out.Delivery) error { return errors.New("deliver to a: status 422") }}
+
+	processed, failed := relay(src, twoConsumers(t), sink).Run(context.Background(), 10)
+
+	if processed != 0 || failed != 1 || len(sink.deliveries) != 1 || len(src.attempts[id1]) != 1 || src.published[id1] {
+		t.Fatalf("processed=%d failed=%d deliveries=%d attempts=%v published=%v, want one delivery, one attempt and the event pending",
+			processed, failed, len(sink.deliveries), src.attempts[id1], src.published[id1])
 	}
 }

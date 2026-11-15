@@ -85,6 +85,67 @@ func TestOutbox_lists_the_first_page_of_pending_events(t *testing.T) {
 	}
 }
 
+// Relay spec 008 (AC-RL-08.1): the actor and the reason of the source envelope travel with the event.
+func TestOutbox_reads_the_actor_and_the_reason(t *testing.T) {
+	page := `{"data":[{"eventId":"` + eventID + `","eventType":"SpecialPermissionGranted","eventVersion":1,
+		"tenantId":"` + tenantID + `","aggregateId":"` + tenantID + `","actorId":"00000000-0000-4000-8000-0000000000aa","reason":"Needs the cash",
+		"payload":{},"occurredAt":"2026-10-11T10:00:00Z","status":"PENDING","attempts":0}],
+		"meta":{"page":1,"limit":50,"total":1,"totalPages":1}}`
+	srv, _ := fakeAPI(t, 200, page)
+
+	events, err := relayhttp.NewOutbox(newClient(srv.URL), outboxPath).ListPending(ctx(), 1, 50)
+
+	if err != nil || len(events) != 1 {
+		t.Fatalf("events=%v err=%v", events, err)
+	}
+	if events[0].ActorID != "00000000-0000-4000-8000-0000000000aa" || events[0].Reason != "Needs the cash" {
+		t.Errorf("actor=%q reason=%q", events[0].ActorID, events[0].Reason)
+	}
+}
+
+func TestSink_sends_the_actor_and_the_reason(t *testing.T) {
+	srv, seen := fakeAPI(t, 201, ``)
+	sink := relayhttp.NewSink(map[string]*httpclient.Client{"identity-audit": newClient(srv.URL)})
+
+	err := sink.Deliver(ctx(), out.Delivery{Consumer: "identity-audit", IdempotencyKey: eventID, Path: "/x",
+		Event: out.Event{ID: eventID, Type: "SpecialPermissionGranted", Version: 1, TenantID: tenantID, AggregateID: tenantID,
+			ActorID: "00000000-0000-4000-8000-0000000000aa", Reason: "Needs the cash", Payload: json.RawMessage(`{}`),
+			OccurredAt: time.Date(2026, 10, 11, 10, 0, 0, 0, time.UTC)}})
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	var body map[string]any
+	if err := json.Unmarshal(seen.body, &body); err != nil {
+		t.Fatalf("body is not JSON: %s", seen.body)
+	}
+	if body["actorId"] != "00000000-0000-4000-8000-0000000000aa" || body["reason"] != "Needs the cash" {
+		t.Errorf("envelope = %s", seen.body)
+	}
+}
+
+// Relay spec 008 (AC-RL-08.2): an event with no actor and no reason (the ones of commercial-reservation today) is sent as before.
+func TestSink_omits_the_actor_and_the_reason_when_the_event_has_none(t *testing.T) {
+	srv, seen := fakeAPI(t, 201, ``)
+	sink := relayhttp.NewSink(map[string]*httpclient.Client{"identity-audit": newClient(srv.URL)})
+
+	err := sink.Deliver(ctx(), out.Delivery{Consumer: "identity-audit", IdempotencyKey: eventID, Path: "/x",
+		Event: out.Event{ID: eventID, Type: "ReservationCreated", Version: 1, TenantID: tenantID, AggregateID: tenantID,
+			Payload: json.RawMessage(`{}`), OccurredAt: time.Date(2026, 10, 11, 10, 0, 0, 0, time.UTC)}})
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	var body map[string]any
+	_ = json.Unmarshal(seen.body, &body)
+	if _, has := body["actorId"]; has {
+		t.Errorf("actorId should be omitted: %s", seen.body)
+	}
+	if _, has := body["reason"]; has {
+		t.Errorf("reason should be omitted: %s", seen.body)
+	}
+}
+
 func TestOutbox_marks_an_event_published(t *testing.T) {
 	srv, seen := fakeAPI(t, 200, `{"eventId":"`+eventID+`","status":"PUBLISHED"}`)
 
@@ -108,9 +169,9 @@ func TestOutbox_marks_an_event_published(t *testing.T) {
 func TestOutbox_records_a_failed_attempt_with_the_error_text(t *testing.T) {
 	srv, seen := fakeAPI(t, 200, `{"eventId":"`+eventID+`","status":"PENDING"}`)
 
-	err := relayhttp.NewOutbox(newClient(srv.URL), outboxPath).RecordFailedAttempt(ctx(), eventID, "security: delivery failed")
+	ended, err := relayhttp.NewOutbox(newClient(srv.URL), outboxPath).RecordFailedAttempt(ctx(), eventID, "security: delivery failed")
 
-	if err != nil {
+	if err != nil || ended {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if seen.method != "POST" || seen.path != outboxPath+"/"+eventID+"/attempts" {
@@ -118,6 +179,30 @@ func TestOutbox_records_a_failed_attempt_with_the_error_text(t *testing.T) {
 	}
 	if string(seen.body) != `{"error":"security: delivery failed"}` {
 		t.Errorf("body = %s", seen.body)
+	}
+}
+
+func TestOutbox_says_when_the_owner_answers_that_the_event_failed(t *testing.T) {
+	for status, want := range map[string]bool{"FAILED": true, "PENDING": false} {
+		srv, _ := fakeAPI(t, 200, `{"eventId":"`+eventID+`","status":"`+status+`"}`)
+
+		ended, err := relayhttp.NewOutbox(newClient(srv.URL), outboxPath).RecordFailedAttempt(ctx(), eventID, "x")
+
+		if err != nil || ended != want {
+			t.Errorf("status %s: ended = %v, err = %v, want %v", status, ended, err, want)
+		}
+	}
+}
+
+func TestOutbox_an_answer_without_a_usable_body_is_not_a_failure_to_record(t *testing.T) {
+	for name, body := range map[string]string{"empty": "", "not JSON": "<html>ok</html>"} {
+		srv, _ := fakeAPI(t, 200, body)
+
+		ended, err := relayhttp.NewOutbox(newClient(srv.URL), outboxPath).RecordFailedAttempt(ctx(), eventID, "x")
+
+		if err != nil || ended {
+			t.Errorf("%s: ended = %v, err = %v: the owner counted the attempt, so it is recorded and not ended", name, ended, err)
+		}
 	}
 }
 
@@ -169,10 +254,11 @@ func TestAdapters_a_5xx_is_a_typed_failure_without_the_raw_body_or_the_token(t *
 	sink := relayhttp.NewSink(map[string]*httpclient.Client{"security": client})
 	outbox := relayhttp.NewOutbox(client, outboxPath)
 	_, listErr := outbox.ListPending(ctx(), 1, 10)
+	_, attemptErr := outbox.RecordFailedAttempt(ctx(), eventID, "x")
 	cases := map[string]error{
 		"list":    listErr,
 		"mark":    outbox.MarkPublished(ctx(), eventID),
-		"attempt": outbox.RecordFailedAttempt(ctx(), eventID, "x"),
+		"attempt": attemptErr,
 		"deliver": sink.Deliver(ctx(), out.Delivery{Consumer: "security", Path: "/x", IdempotencyKey: eventID}),
 	}
 	for name, err := range cases {
@@ -202,5 +288,29 @@ func TestAdapters_an_unreachable_service_is_a_transport_failure_without_the_toke
 	}
 	if strings.Contains(err.Error(), token) {
 		t.Errorf("error leaks the token: %v", err)
+	}
+}
+
+// Relay spec 012, AC-RL-12.4 and .5 (norm 5.7.2, DP-15-06): a consumer that answers 401, 422 or 404 is asked once in the run; the retry is the one of
+// the owner of the outbox, which counts the attempt.
+func TestSink_a_4xx_is_asked_once_and_is_a_typed_failure(t *testing.T) {
+	for _, status := range []int{401, 422, 404} {
+		hits := 0
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			hits++
+			w.WriteHeader(status)
+		}))
+		sink := relayhttp.NewSink(map[string]*httpclient.Client{"cash-reporting": newClient(srv.URL)})
+
+		err := sink.Deliver(ctx(), out.Delivery{Consumer: "cash-reporting", Path: "/x", IdempotencyKey: eventID})
+		srv.Close()
+
+		var apiErr *httpclient.APIError
+		if !errors.As(err, &apiErr) || apiErr.Status != status {
+			t.Errorf("status %d: want *APIError with that status, got %T %v", status, err, err)
+		}
+		if hits != 1 {
+			t.Errorf("status %d: the consumer was asked %d times, want once", status, hits)
+		}
 	}
 }
