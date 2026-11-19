@@ -193,16 +193,16 @@ func TestC_default_routes_send_the_scheduled_departure_to_commercial_reservation
 	}
 }
 
-// Gap G-API-2: commercial-reservation does not accept SalidaRescheduled (its route answers 400 to a type it does not name, and the
-// event would end FAILED after twenty attempts). It is known, so it is published without delivery and raises no alert, until
-// that service accepts it; then it gets the same route as SalidaScheduled.
-func TestC_the_rescheduled_departure_is_known_and_has_no_consumer_until_commercial_reservation_accepts_it(t *testing.T) {
+// Gap G-API-2 closed: commercial-reservation accepts SalidaRescheduled since its PR 536 (2026-11-16), so the change of date of a
+// departure reaches it and the audit. cash-reporting does not name it and would answer 400, so it is not a consumer.
+func TestC_the_rescheduled_departure_reaches_the_audit_and_commercial_reservation(t *testing.T) {
 	rt, err := config.NewRoutingTable(config.DefaultRoutes())
 	if err != nil {
 		t.Fatalf("default table: %v", err)
 	}
-	if routes, known := rt.RoutesFor("SalidaRescheduled"); !known || len(routes) != 0 {
-		t.Errorf("SalidaRescheduled: routes=%v known=%v, want known and with no consumer", routes, known)
+	routes, known := rt.RoutesFor("SalidaRescheduled")
+	if !known || consumerNames(routes) != "identity-audit commercial-reservation" {
+		t.Errorf("SalidaRescheduled: routes=%v known=%v, want the audit and commercial-reservation", routes, known)
 	}
 }
 
@@ -431,8 +431,8 @@ func TestC_the_events_of_cash_reporting_reach_the_audit(t *testing.T) {
 // TenantEventController maps the type (it keeps the zone and the country of its copy of the tenant). security still answers 400 to a tenant event type
 // it does not know and so gets none; the audit record is written by the identity-audit API with the change. (Before, security and
 // commercial-reservation answer 400 to a tenant event type they do not know, which would end it FAILED after twenty attempts, and the audit
-// record is written by the identity-audit API with the change itself. So it is published without delivery, as SalidaRescheduled is, until a
-// consumer accepts it.
+// record is written by the identity-audit API with the change itself. So it was published without delivery until a
+// consumer accepted it.
 // Relay spec 016 (RN-RL-160): cash-reporting applies it since 2026-11-13, so it goes back to commercial-reservation and cash-reporting.
 func TestDefaultRoutes_TenantLocalizationChangedGoesToCommercialReservationAndCashReporting(t *testing.T) {
 	rt, err := config.NewRoutingTable(config.DefaultRoutes())
@@ -522,6 +522,7 @@ func TestC_the_routes_table_of_spec_012_row_by_row(t *testing.T) {
 		"SalidaFinalized":                       audit + " " + commercial + " " + cash,
 		"SalidaCancelled":                       audit + " " + commercial + " " + cash,
 		"SalidaVehiclesChanged":                 audit + " " + commercial,
+		"SalidaRescheduled":                     audit + " " + commercial,
 		"SalidaMarkedPendienteDeRegularizacion": audit,
 		"OperationalCostRecorded":               audit + " " + cash, // relay spec 016, RN-RL-160: cash-reporting applies it again
 		"ExtraordinaryCancellationRecorded":     audit,
