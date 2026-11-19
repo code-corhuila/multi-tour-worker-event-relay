@@ -154,12 +154,11 @@ func plainAbsolutePath(path string) bool {
 // security microservice that the audit records (HU-IDA-002, the three of the password recovery of HU-SEC-004 and the two of the
 // exceptional access of HU-SEC-007); notifications alone the notice of an emergency access (EmergencyAccessNoticeRequested,
 // relay spec 011), which the audit does not record because it has the facts of the access;
-// commercial-reservation the scheduled departure of operations-cost, the new total of its vehicles (HU-OPS-002) and its
-// start and end (HU-OPS-003). The tenant events also reach commercial-reservation (the copy of the status of the tenant), and
+// commercial-reservation the scheduled departure of operations-cost, its change of date (HU-OPS-001), the new total of its
+// vehicles (HU-OPS-002) and its start and end (HU-OPS-003). The tenant events also reach commercial-reservation (the copy of the status of the tenant), and
 // AccountEmailVerified reaches it (it links the account to the customer of that tenant) and the audit; the 22 events that
-// commercial-reservation writes reach the audit (relay spec 007 and event-catalog.md); two more of its events are published without delivery. AccountTemporaryCredentialIssued and
-// SalidaRescheduled have no consumer yet and are marked published without delivery on purpose, so they do not
-// pile up in the outbox.
+// commercial-reservation writes reach the audit (relay spec 007 and event-catalog.md); two more of its events are published without delivery. AccountTemporaryCredentialIssued
+// has no consumer yet and is marked published without delivery on purpose, so it does not pile up in the outbox.
 // AccountSessionsRevoked reaches every service that accepts a token (relay specs 013 and 015). The relay reads the outbox of cash-reporting (G-RL7-1); its PlatformExceptionalAccessUsed reaches the audit by event type.
 func DefaultRoutes() map[string][]out.Route {
 	security := []out.Route{{Consumer: "security", Path: tenantEventsPath}}
@@ -211,9 +210,8 @@ func DefaultRoutes() map[string][]out.Route {
 		"ExtraordinaryCancellationRecorded": identityAudit,
 		// relay spec 014: commercial-reservation has no consumer of it yet (G-API8-2), so only the audit until it does.
 		"PersonalEmergencyRecorded": identityAudit,
-		// Gap G-API-2: commercial-reservation does not accept SalidaRescheduled yet (it would answer 400 and the event would end
-		// FAILED after twenty attempts), so it is published without delivery until it does; then it takes the same route.
-		"SalidaRescheduled": nil,
+		// Gap G-API-2 closed: commercial-reservation accepts it since its PR 536; cash-reporting does not name it (it would answer 400).
+		"SalidaRescheduled": auditAndReservations,
 		// HU-OPS-003 part B: operations-cost marks a departure past its estimated end; no service accepts the event yet, so it is
 		// published without delivery until one does.
 		"SalidaMarkedPendienteDeRegularizacion": identityAudit,
